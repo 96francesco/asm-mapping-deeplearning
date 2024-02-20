@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 asm-mapping-deeplearning
 ==============================
 
@@ -55,3 +56,7 @@ Project Organization
 --------
 
 <p><small>Project based on the <a target="_blank" href="https://drivendata.github.io/cookiecutter-data-science/">cookiecutter data science project template</a>. #cookiecutterdatascience</small></p>
+=======
+# asm-mapping-deeplearning
+Repository for the MSc Thesis: "Using high-resolution satellite imagery and deep learning to map artisanal mining spatial extent in the DRC"
+>>>>>>> 17098600e469c95c14e8e5fcfc796a99127627a7
