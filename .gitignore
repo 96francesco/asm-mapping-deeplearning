@@ -90,3 +90,7 @@ target/
 
 # add sbatch script
 src/models/train_model.sh
+
+# add slurm output
+src/models/slurm-*.out
+slurm-*.out
