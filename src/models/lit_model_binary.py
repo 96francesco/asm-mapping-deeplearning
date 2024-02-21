@@ -51,7 +51,7 @@ class LitModelBinary(pl.LightningModule):
                     decoder_attention_type='scse',
                     encoder_weights='none',
                     in_channels=7,
-                    classes=self.num_classes
+                    classes=1
             )
             pass
         else:
@@ -141,5 +141,5 @@ class LitModelBinary(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = self.optimizer(self.model.parameters(), lr=1e-3,
                                         weight_decay=self.weight_decay)
-        scheduler = StepLR(optimizer, step_size=1, gamma=0.7)
+        scheduler = StepLR(optimizer, step_size=5, gamma=0.25)
         return [optimizer], [scheduler]
