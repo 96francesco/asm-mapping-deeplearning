@@ -94,3 +94,6 @@ src/models/train_model.sh
 # add slurm output
 src/models/slurm-*.out
 slurm-*.out
+
+# lightning logs
+lightning_logs/
