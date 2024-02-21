@@ -49,7 +49,7 @@ class LitModelBinary(pl.LightningModule):
                     encoder_name="resnet34",
                     decoder_use_batchnorm=True,
                     decoder_attention_type='scse',
-                    encoder_weights='none',
+                    encoder_weights=None,
                     in_channels=7,
                     classes=1
             )
