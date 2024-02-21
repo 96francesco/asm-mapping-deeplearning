@@ -27,18 +27,12 @@ unet = smp.Unet(
     activation=None
 )
 
-# dataset class
+# load training set
 training_dir = '/mnt/guanabana/raid/home/pasan001/thesis/dataset/training_data'
-testing_dir = '/mnt/guanabana/raid/home/pasan001/thesis/dataset/testing_data'
-
 normalization = linear_norm_global_percentile
-
 training_dataset = PlanetDataset(training_dir,
                                  pad=True,
                                  normalization=normalization)
-testing_dataset = PlanetDataset(testing_dir,
-                                pad=True,
-                                normalization=normalization)
 
 # extract validation subset from the training set
 total_size = len(training_dataset)
@@ -46,14 +40,12 @@ train_size = int(0.8 * total_size)
 val_size = total_size - train_size # get 20% of training set
 train_set, val_set = random_split(training_dataset, [train_size, val_size])
 
-# initialize dataloaders
+# initialize dataloader
 batch_size = 16
 train_loader = DataLoader(train_set, batch_size=batch_size,
                               shuffle=True, num_workers=4)
 val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False,
                             num_workers=4)
-test_loader = DataLoader(testing_dataset, batch_size=batch_size, shuffle=False,
-                         num_workers=4)
 
 # define model
 unet = smp.Unet(
