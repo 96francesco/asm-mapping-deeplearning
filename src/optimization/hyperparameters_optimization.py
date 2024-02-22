@@ -62,7 +62,7 @@ def objective(trial):
       early_stop_callback = EarlyStopping(
       monitor='val_loss',
       min_delta=0.00,
-      patience=30, # be more patient for the study
+      patience=10, 
       verbose=False, # disable for the study
       mode='min')
 
