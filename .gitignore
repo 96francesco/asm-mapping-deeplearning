@@ -97,3 +97,7 @@ slurm-*.out
 
 # lightning logs
 lightning_logs/
+
+# model checkpoints are too heavy to store on github
+models/checkpoints/
+checkpoints/
