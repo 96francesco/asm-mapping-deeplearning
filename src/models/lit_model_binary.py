@@ -72,10 +72,18 @@ class LitModelBinary(pl.LightningModule):
             raise ValueError(f'Unkwnon loss function: {loss}')
 
         # initialize accuracy metrics
-        self.accuracy = torchmetrics.Accuracy(task='binary', threshold=self.threshold)
-        self.precision = torchmetrics.Precision(task='binary', average='macro')
-        self.recall = torchmetrics.Recall(task='binary', average='macro')
-        self.f1_score = torchmetrics.F1Score(task='binary', average='macro')
+        self.accuracy = torchmetrics.Accuracy(task='binary', 
+                                              average='macro',
+                                              threshold=self.threshold)
+        self.precision = torchmetrics.Precision(task='binary', 
+                                                average='macro',
+                                                threshold=self.threshold)
+        self.recall = torchmetrics.Recall(task='binary', 
+                                          average='macro',
+                                          threshold=self.threshold)
+        self.f1_score = torchmetrics.F1Score(task='binary', 
+                                             average='macro',
+                                             threshold=self.threshold)
 
     def forward(self, x):
         """
