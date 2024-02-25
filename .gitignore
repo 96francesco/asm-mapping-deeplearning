@@ -101,3 +101,7 @@ lightning_logs/
 # model checkpoints are too heavy to store on github
 models/checkpoints/
 checkpoints/
+
+# model predictions and plots (temporary)
+models/predictions/
+reports
