@@ -8,7 +8,28 @@ from torch.optim.lr_scheduler import StepLR
 
 class LitModelMulticlass(pl.LightningModule):
     """
-      !!!
+    A LightningModule for multiclass classification with various loss functions and optimizers.
+    Implements forward pass, training, validation, test steps, and optimizer configuration.
+
+    Attributes:
+        model (torch.nn.Module): The underlying model for predictions.
+            Defaults to SMP's Unet with ResNet34 backbone if None.
+        loss (str): Loss function name ('ce', 'focal', 'iou'). Default: 'ce'.
+        pos_weight (torch.Tensor, optional): A weight of positive examples for unbalanced datasets.
+        weight_decay (float): Weight decay (L2 penalty) for optimizer. Default: 1e-5.
+        lr (float): Learning rate for optimizer. Default: 1e-3.
+        num_classes (int): Number of classes. Default: 11.
+        ignore_index (int): Index to ignore in loss calculations. Default: -100.
+        optimizer (str): Optimizer name ('sgd', 'adam'). Default: 'sgd'.
+
+        Methods:
+        forward(x): Defines the forward pass of the model.
+        training_step(train_batch, batch_idx): Processes a single batch during training.
+        validation_step(val_batch, batch_idx): Processes a single batch during validation.
+        test_step(test_batch, batch_idx): Processes a single batch during testing,
+            calculates and logs metrics.
+        configure_optimizers(): Configures and returns the model's optimizers and
+            learning rate schedulers.
     """
     def __init__(self, model=None, loss='ce', pos_weight=None, weight_decay=1e-5,
                  optimizer='sgd', lr=1e-3, num_classes=11, ignore_index=-100):
@@ -17,6 +38,7 @@ class LitModelMulticlass(pl.LightningModule):
         self.num_classes = num_classes
         self.ignore_index = ignore_index
         self.lr = lr
+        self.save_hyperparameters()
 
         if optimizer == 'sgd':
             self.optimizer = torch.optim.SGD
@@ -113,11 +135,11 @@ class LitModelMulticlass(pl.LightningModule):
 
         # calculate accuracy and other metrics
         acc = self.accuracy(preds, y)
-        self.log('test_loss', loss)
-        self.log('accuracy', acc)
-        self.log('precision', self.precision(preds, y,))
-        self.log('recall', self.recall(preds, y))
-        self.log('f1_score', self.f1_score(preds, y))
+        self.log('test_loss', loss, sync_dist=True)
+        self.log('accuracy', acc, sync_dist=True)
+        self.log('precision', self.precision(preds, y), sync_dist=True)
+        self.log('recall', self.recall(preds, y), sync_dist=True)
+        self.log('f1_score', self.f1_score(preds, y), sync_dist=True)
 
         return loss
 
