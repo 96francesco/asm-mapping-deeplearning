@@ -17,8 +17,9 @@ class LitModelBinary(pl.LightningModule):
         loss (str): Loss function name ('bce', 'focal', 'iou'). Default: 'bce'.
         pos_weight (torch.Tensor, optional): A weight of positive examples for unbalanced datasets.
         weight_decay (float): Weight decay (L2 penalty) for optimizer. Default: 1e-5.
+        lr (float): Learning rate for optimizer. Default: 1e-3.
+        threshold (float): Threshold for binary classification. Default: 0.5.
         optimizer (str): Optimizer name ('sgd', 'adam'). Default: 'sgd'.
-        num_classes (int): Number of target classes. Default: 2 for binary classification.
     
     Methods:
         forward(x): Defines the forward pass of the model.
@@ -35,6 +36,7 @@ class LitModelBinary(pl.LightningModule):
         self.weight_decay = weight_decay
         self.lr = lr
         self.threshold = threshold
+        self.save_hyperparameters()
 
         if optimizer == 'sgd':
             self.optimizer = torch.optim.SGD
@@ -135,16 +137,16 @@ class LitModelBinary(pl.LightningModule):
         acc = self.accuracy(probs.squeeze(), y.squeeze().long())
 
         # log loss and accuracy metrics
-        self.log('test_loss', loss)
-        self.log('accuracy', acc)
-        self.log('precision', self.precision(preds, y))
-        self.log('recall', self.recall(preds, y))
-        self.log('f1_score', self.f1_score(preds, y))
+        self.log('test_loss', loss, sync_dist=True)
+        self.log('accuracy', acc, sync_dist=True)
+        self.log('precision', self.precision(preds, y), sync_dist=True)
+        self.log('recall', self.recall(preds, y), sync_dist=True)
+        self.log('f1_score', self.f1_score(preds, y), sync_dist=True)
 
         return loss
 
     def configure_optimizers(self):
-        optimizer = self.optimizer(self.model.parameters(), lr=1e-3,
+        optimizer = self.optimizer(self.model.parameters(), lr=self.lr,
                                         weight_decay=self.weight_decay)
         scheduler = StepLR(optimizer, step_size=5, gamma=0.25)
         return [optimizer], [scheduler]
