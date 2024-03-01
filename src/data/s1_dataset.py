@@ -39,11 +39,23 @@ class Sentinel1Dataset(Dataset):
     def __len__(self):
         return len(self.dataset)
 
-    def pad_img(self, img_tensor, pad_height, pad_width):
-        channels, height, width = img_tensor.shape
-        padded_img = torch.zeros((channels, height + pad_height, width + pad_width))
-        padded_img[:, :height, :width] = img_tensor
-        return padded_img
+    def pad_to_target(self, img_tensor, target_height=192, target_width=192):
+        """
+        Pads an image tensor to the target height and width with zeros.
+        The padding is applied to the bottom and right edges of the image.
+        """
+        _, height, width = img_tensor.shape
+
+        # Calculate padding
+        pad_height = target_height - height if height < target_height else 0
+        pad_width = target_width - width if width < target_width else 0
+
+        # Apply padding if needed
+        if pad_height > 0 or pad_width > 0:
+            padding = (0, pad_width, 0, pad_height)  # Padding on the right and bottom
+            img_tensor = torch.nn.functional.pad(img_tensor, padding, "constant", 0)
+
+        return img_tensor
 
     def __getitem__(self, idx):
         img_path, gt_path = self.dataset[idx]
@@ -64,11 +76,7 @@ class Sentinel1Dataset(Dataset):
         gt_tensor = torch.from_numpy(gt).long()
 
         if self.pad:
-            target_height = 192
-            target_width = 192
-            pad_height = (target_height - img_tensor.shape[1] % target_height) % target_height
-            pad_width = (target_width - img_tensor.shape[2] % target_width) % target_width
-            img_tensor = self.pad_img(img_tensor, pad_height, pad_width)
-            gt_tensor = self.pad_img(gt_tensor.unsqueeze(0), pad_height, pad_width).squeeze(0).long()
+            img_tensor = self.pad_to_target(img_tensor)
+            gt_tensor = self.pad_to_target(gt_tensor.unsqueeze(0)).squeeze(0).long()
 
         return img_tensor, gt_tensor
