@@ -32,14 +32,20 @@ class PlanetDataset(Dataset):
             applying any specified transformations.
       """
     
-      def __init__(self, data_dir: str, pad=False, normalization=None, transforms=None):
+      def __init__(self, data_dir: str, pad=False, normalization=None, transforms=None, is_fusion=False):
             self.data_dir = data_dir
             self.pad = pad
             self.normalization = normalization
             self.transforms = transforms
+            self.is_fusion = is_fusion
 
-            self.img_folder = os.path.join(data_dir, 'images')
-            self.gt_folder = os.path.join(data_dir, 'gt')
+            if is_fusion:
+                  self.img_folder = os.path.join(data_dir)   
+                  goal_dir = os.path.join(data_dir,  '../../gt') 
+                  self.gt_folder = os.path.normpath(goal_dir)
+            else:
+                  self.img_folder = os.path.join(data_dir, 'images')
+                  self.gt_folder = os.path.join(data_dir, 'gt')
 
             # Get a sorted list of image and ground truth file names
             img_filenames = sorted(os.listdir(self.img_folder))
