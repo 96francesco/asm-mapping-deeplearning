@@ -27,7 +27,7 @@ class FusionDataset(Dataset):
       Returns:
             The processed images from both datasets, and their ground truths.
     """
-      def __init__(self, root_dir, train=True, transforms=None):
+      def __init__(self, root_dir, train=True, transforms=None, planet_normalization=None, s1_normalization=None):
             # get data directories
             s1_data_dir = os.path.join(root_dir, 'training_data' if train else 'testing_data', 'images', 's1')
             planet_data_dir = os.path.join(root_dir, 'training_data' if train else 'testing_data', 'images', 'planet')
