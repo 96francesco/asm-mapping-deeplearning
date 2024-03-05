@@ -1,13 +1,9 @@
 import os
-import numpy as np
-import torch
-import rasterio
 
-from PIL import Image
 from torchvision import transforms
 from torch.utils.data import Dataset
-from scipy.ndimage import median_filter
 
+# import custom modules
 from data.s1_dataset import Sentinel1Dataset
 from data.planet_dataset import PlanetDataset
 
@@ -23,7 +19,8 @@ class FusionDataset(Dataset):
                               'training data' and 'testing data' directories, each with 'gt', 'planet', and 's1' subdirectories.
             train (bool): Whether to use the training data. If False, testing data will be used.
             transforms (callable, optional): Optional transform to be applied on a sample.
-      
+            planet_normalization (callable, optional): Optional normalization to be applied on Planet images.
+            s1_normalization (callable, optional): Optional normalization to be applied on Sentinel-1 images.      
       Returns:
             The processed images from both datasets, and their ground truths.
     """
@@ -36,10 +33,12 @@ class FusionDataset(Dataset):
             self.s1_dataset = Sentinel1Dataset(data_dir=s1_data_dir, 
                                                pad=True, 
                                                is_fusion=True, 
-                                               planet_ref_path=planet_data_dir)
+                                               planet_ref_path=planet_data_dir,
+                                               normalization=s1_normalization)
             self.planet_dataset = PlanetDataset(data_dir=planet_data_dir, 
                                                 pad=True, 
-                                                is_fusion=True)
+                                                is_fusion=True,
+                                                normalization=planet_normalization)
 
             # ensure both datasets have the same length and other initialization details here
             assert len(self.s1_dataset) == len(self.planet_dataset), "Datasets must have the same size"
