@@ -132,10 +132,11 @@ class Sentinel1Dataset(Dataset):
 
         img_tensor = torch.from_numpy(img).float()
 
-        gt = np.array(rasterio.open(gt_path).read(1), dtype=np.float32)
+        # gt = np.array(rasterio.open(gt_path).read(1), dtype=np.float32)
+        gt = np.array(Image.open(gt_path).convert('L'), dtype=np.float32)
         gt_tensor = torch.from_numpy(gt).long()
 
-        if self.pad:
+        if self.pad is True:
             img_tensor = self.pad_to_target(img_tensor)
             gt_tensor = self.pad_to_target(gt_tensor.unsqueeze(0)).squeeze(0).long()
 
