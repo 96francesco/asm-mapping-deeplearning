@@ -29,11 +29,11 @@ def plot_segmentation_outputs(predictions_file: str, output_name: str, num_examp
             output_img = (probs > 0.5).squeeze().astype(np.uint8)
 
             axs[i, 0].imshow(input_img_rgb)
-            axs[i, 0].set_title("Input Image")
+            axs[i, 0].set_title("Input Image", fontsize=20)
             axs[i, 1].imshow(output_img, cmap='gray')
-            axs[i, 1].set_title("Model Segmentation")
+            axs[i, 1].set_title("Model Segmentation", fontsize=20)
             axs[i, 2].imshow(target_img, cmap='gray')
-            axs[i, 2].set_title("Ground Truth")
+            axs[i, 2].set_title("Ground Truth", fontsize=20)
 
             for ax in axs[i]:
                   ax.axis("off")
