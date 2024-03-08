@@ -1,0 +1,19 @@
+{     
+      "datasource": "s1",
+      "training_dir": "/mnt/guanabana/raid/home/pasan001/thesis/dataset/asm_dataset_split_0/s1/training_data",
+      "normalization": "standardization",
+
+      "mode": "binary",
+      "number_of_classes": 1,
+      "in_channels": 2,
+      "class_weight": "None",
+      "batch_size": 8,
+      "loss": "ce",
+      "optimizer": "adam",
+      "learning_rate": 0.001,
+      "weight_decay": 0.0001,
+      "threshold": 0.5,
+      "epochs": 100,
+
+      "filename_prefix": "config_trial"
+}
