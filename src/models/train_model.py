@@ -99,6 +99,7 @@ unet = smp.Unet(
 # define model
 model = mode_dict[config["mode"]]
 model = model(model=unet,
+            in_channels=config["in_channels"],
             loss=config["loss"],
             optimizer=config["optimizer"],
             lr=config["learning_rate"],
@@ -135,5 +136,5 @@ trainer = pl.Trainer(max_epochs=config["epochs"],
                      detect_anomaly=False,
                      strategy=DDPStrategy(find_unused_parameters=True),
                      callbacks=[early_stop_callback, checkpoint_callback])
-
+print(model.hparams)
 trainer.fit(model, train_loader, val_loader)
