@@ -3,6 +3,8 @@ import pytorch_lightning as pl
 import segmentation_models_pytorch as smp
 import torch
 import json
+import gc
+import os
 
 from pytorch_lightning.callbacks import EarlyStopping
 from pytorch_lightning.callbacks import ModelCheckpoint
@@ -27,8 +29,14 @@ from models.lit_model_binary import LitModelBinary
 from models.lit_model_multiclass import LitModelMulticlass
 from models.lit_model_fusion import LitModelBinaryLateFusion
 
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
+
 # set seed for reproducibility
 seed_everything(42, workers=True)
+
+# clear CUDA cache
+torch.cuda.empty_cache()
+gc.collect()
 
 # read config file
 with open('src/models/train_config.json') as f:
@@ -60,17 +68,32 @@ elif datasource_dict[config["datasource"]] == Sentinel1Dataset:
     "percentile": s1_norm_percentile,
 }
     dataset = Sentinel1Dataset
-
+elif datasource_dict[config["datasource"]] == FusionDataset:
+    normalization_dict = {
+    "planet_minmax": planet_norm_minmax,
+    "s1_standardization": s1_standardization,
+}
+    dataset = FusionDataset
 
 # create class weights
 class_weight = torch.tensor([133822248 / 4196568])
 
 # create training dataset
 training_dir = config["training_dir"]
-normalization = normalization_dict[config["normalization"]]
-training_dataset = dataset(training_dir,
-                           pad=True,
-                           normalization=normalization)
+
+# handle data fusion case
+if datasource_dict[config["datasource"]] == FusionDataset:
+    planet_normalization = normalization_dict[config["planet_normalization"]]
+    s1_normalization = normalization_dict[config["s1_normalization"]]
+    training_dataset = dataset(training_dir,
+                            train=True,
+                            planet_normalization=planet_normalization,
+                            s1_normalization=s1_normalization)
+else:
+    normalization = normalization_dict[config["normalization"]]
+    training_dataset = dataset(training_dir,
+                            pad=True,
+                            normalization=normalization)
 
 # extract validation subset from the training set
 total_size = len(training_dataset)
@@ -81,9 +104,9 @@ train_set, val_set = random_split(training_dataset, [train_size, val_size])
 # initialize dataloader
 batch_size = config["batch_size"]
 train_loader = DataLoader(train_set, batch_size=batch_size,
-                              shuffle=True, num_workers=0)
+                              shuffle=True, num_workers=9)
 val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False,
-                            num_workers=0)
+                            num_workers=9)
 
 # define U-Net model
 unet = smp.Unet(
@@ -97,15 +120,25 @@ unet = smp.Unet(
 )
 
 # define model
-model = mode_dict[config["mode"]]
-model = model(model=unet,
-            in_channels=config["in_channels"],
-            loss=config["loss"],
-            optimizer=config["optimizer"],
-            lr=config["learning_rate"],
-            threshold=config["threshold"],
-            weight_decay=config["weight_decay"],
-            pos_weight=None if config['class_weight'] == "None" else class_weight)
+if config["mode"] == "fusion":
+    model = LitModelBinaryLateFusion(
+        fusion_loss=config["loss"],
+        lr=config["learning_rate"],
+        threshold=config["threshold"],
+        optimizer=config["optimizer"],
+        weight_decay=config["weight_decay"],
+        pos_weight=None if config['class_weight'] == "None" else class_weight
+    )
+else:
+    model = mode_dict[config["mode"]]
+    model = model(model=unet,
+                in_channels=config["in_channels"],
+                loss=config["loss"],
+                optimizer=config["optimizer"],
+                lr=config["learning_rate"],
+                threshold=config["threshold"],
+                weight_decay=config["weight_decay"],
+                pos_weight=None if config['class_weight'] == "None" else class_weight)
 
 # define filename for the checkpoints       
 filename_prefix = config["filename_prefix"]
@@ -135,6 +168,9 @@ trainer = pl.Trainer(max_epochs=config["epochs"],
                      devices=2,
                      detect_anomaly=False,
                      strategy=DDPStrategy(find_unused_parameters=True),
-                     callbacks=[early_stop_callback, checkpoint_callback])
+                     callbacks=[early_stop_callback, checkpoint_callback],
+                     accumulate_grad_batches=4,
+                    #  precision=16
+                     )
 print(model.hparams)
 trainer.fit(model, train_loader, val_loader)

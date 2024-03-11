@@ -2,6 +2,7 @@ import pytorch_lightning as pl
 import segmentation_models_pytorch as smp
 import torch
 import json
+import gc
 
 from pytorch_lightning.callbacks import EarlyStopping
 from pytorch_lightning.callbacks import ModelCheckpoint
@@ -28,6 +29,10 @@ from models.lit_model_fusion import LitModelBinaryLateFusion
 
 # set seed for reproducibility
 seed_everything(42, workers=True)
+
+# clear CUDA cache
+torch.cuda.empty_cache()
+gc.collect()
 
 # read config file
 with open('src/models/test_config.json') as f:
@@ -59,17 +64,32 @@ elif datasource_dict[config["datasource"]] == Sentinel1Dataset:
     "percentile": s1_norm_percentile,
 }
     dataset = Sentinel1Dataset
+elif datasource_dict[config["datasource"]] == FusionDataset:
+    normalization_dict = {
+    "planet_minmax": planet_norm_minmax,
+    "s1_standardization": s1_standardization,
+}
+    dataset = FusionDataset
 
 # create testing dataset
 testing_dir = config["testing_dir"]
-normalization = normalization_dict[config["normalization"]]
-testing_dataset = dataset(testing_dir,
-                         pad=True,
-                         normalization=normalization)
+
+if datasource_dict[config["datasource"]] == FusionDataset:
+    planet_normalization = normalization_dict[config["planet_normalization"]]
+    s1_normalization = normalization_dict[config["s1_normalization"]]
+    testing_dataset = dataset(testing_dir,
+                            train=False,
+                            planet_normalization=planet_normalization,
+                            s1_normalization=s1_normalization)
+else:
+    normalization = normalization_dict[config["normalization"]]
+    testing_dataset = dataset(testing_dir,
+                            pad=True,
+                            normalization=normalization)
 
 # load the checkpoint
-checkpoint = config["checkpoint"]
-model = LitModelMulticlass.load_from_checkpoint(checkpoint_path=checkpoint)
+model = mode_dict[config["mode"]]
+model = model.load_from_checkpoint(checkpoint_path=config["checkpoint"])
 
 # set the model for evaluation
 model.eval()
@@ -81,7 +101,10 @@ test_loader = DataLoader(testing_dataset,
                          batch_size=batch_size, 
                          shuffle=False,
                          num_workers=4)
+print(model.hparams)
 
 # test the model
-trainer = pl.Trainer()
+trainer = pl.Trainer(accelerator='gpu',
+                     devices=4,
+                     strategy=DDPStrategy(find_unused_parameters=True))
 trainer.test(model, test_loader)
