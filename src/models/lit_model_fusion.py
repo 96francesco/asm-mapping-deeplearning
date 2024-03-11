@@ -1,75 +1,82 @@
 import pytorch_lightning as pl
-import segmentation_models_pytorch as smp
 import torch
-import torchmetrics
 import torch.nn as nn
-
-from torch.optim.lr_scheduler import StepLR
+import segmentation_models_pytorch as smp
+import torchmetrics
 
 class LitModelBinaryLateFusion(pl.LightningModule):
       def __init__(self, planet_checkpoint=None, s1_checkpoint=None,
-                 loss='ce', pos_weight=None, weight_decay=1e-5,
-                 lr=1e-3, threshold=0.5, optimizer='sgd',
-                  s1_in_channels=2, planet_in_channels=7):
+                  fusion_loss='ce', lr=1e-3, threshold=0.5, optimizer='adam',
+                  s1_in_channels=2, planet_in_channels=7, weight_decay=1e-5, pos_weight=None):
             super().__init__()
-            self.weight_decay = weight_decay
-            self.lr = lr
+            self.save_hyperparameters()
             self.threshold = threshold
-            self.s1_in_channels = s1_in_channels
-            self.planet_in_channels = planet_in_channels
-            self.save_hyperparameters
 
-            # define two separate U-Net models for Sentinel-1 and Planet data
+            # Stream-specific models
+            # Define two separate U-Net models for Sentinel-1 and Planet data
             if s1_checkpoint is not None:
-                  # load Sentinel-1 model from checkpoint
-                  self.unet_s1 = self.load_model_from_checkpoint(s1_checkpoint)
+                  # Load Sentinel-1 model from checkpoint
+                  self.s1_model = self.load_model_from_checkpoint(s1_checkpoint, 
+                                                                  self.hparams.s1_in_channels)
             else:
-                  # initialize a new Sentinel-1 model
-                  self.unet_s1 = smp.Unet(
-                                    encoder_name="resnet34",
-                                    decoder_use_batchnorm=True,
-                                    decoder_attention_type='scse',
-                                    encoder_weights=None,
-                                    in_channels=self.s1_in_channels, 
-                                    classes=1
-                                    )
+                  # Initialize a new Sentinel-1 model
+                  self.s1_model = smp.Unet(
+                  encoder_name="resnet34",
+                  in_channels=self.hparams.s1_in_channels,
+                  classes=1,
+                  encoder_weights=None,
+                  decoder_use_batchnorm=True,
+                  decoder_attention_type='scse'
+                  )
             
             if planet_checkpoint is not None:
-                  # load Planet model from checkpoint
-                  self.unet_planet = self.load_model_from_checkpoint(planet_checkpoint)
+                  # Load Planet model from checkpoint
+                  self.planet_model = self.load_model_from_checkpoint(planet_checkpoint, 
+                                                                      self.hparams.planet_in_channels)
             else:
-                  # initialize a new Planet model
-                  self.unet_planet = smp.Unet(
-                                          encoder_name="resnet34",
-                                          decoder_use_batchnorm=True,
-                                          decoder_attention_type='scse',
-                                          encoder_weights=None,
-                                          in_channels=self.planet_in_channels,
-                                          classes=1)
+                  # Initialize a new Planet model
+                  self.planet_model = smp.Unet(
+                  encoder_name="resnet34",
+                  in_channels=self.hparams.planet_in_channels,
+                  classes=1,
+                  encoder_weights=None,
+                  decoder_use_batchnorm=True,
+                  decoder_attention_type='scse'
+            )
 
-            if optimizer == 'sgd':
-                  self.optimizer = torch.optim.SGD
-            elif optimizer == 'adam':
-                  self.optimizer = torch.optim.Adam
-            else:
-                  raise ValueError(f'Unkwnown optimizer')
-            
-            if loss == 'ce':
+            # Loss for the single streams
+            self.s1_loss = smp.losses.JaccardLoss(mode='binary')
+            self.planet_loss = smp.losses.FocalLoss(alpha=0.25, gamma=2.0, mode='binary')
+
+            # Fusion layer
+            self.fusion_conv = nn.Conv2d(in_channels=2, out_channels=1, kernel_size=1)
+
+            # Criterion based on fusion_loss and pos_weight
+            if fusion_loss == 'ce':
                   if pos_weight is not None:
-                        self.criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight.to('cuda'))
+                        pos_weight_tensor = torch.tensor(pos_weight).to(self.device)
+                        self.fusion_criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight_tensor)
                   else:
-                        self.criterion = nn.BCEWithLogitsLoss()
-            elif loss == 'focal':
-                  self.criterion = smp.losses.FocalLoss(alpha=0.25, gamma=2.0, mode='binary')
-            elif loss == 'iou':
-                  self.criterion = smp.losses.JaccardLoss(mode='binary')
+                        self.fusion_criterion = nn.BCEWithLogitsLoss()
+            elif fusion_loss == 'focal':
+                  self.fusion_criterion = smp.losses.FocalLoss(alpha=0.25, gamma=2.0, mode='binary')
+            elif fusion_loss == 'iou':
+                  self.fusion_criterion = smp.losses.JaccardLoss(mode='binary')
             else:
-                  raise ValueError(f'Unkwnon loss function: {loss}')
-            
-            # initialize accuracy metrics
+                  raise ValueError(f'Unknown loss function: {fusion_loss}')
+
+            # Optimizer
+            if optimizer == 'adam':
+                  self.optimizer = torch.optim.Adam
+            elif optimizer == 'sgd':
+                  self.optimizer = torch.optim.SGD
+            else:
+                  raise ValueError(f'Unknown optimizer: {optimizer}')
+
+            # Metrics with the specified threshold
             self.accuracy = torchmetrics.Accuracy(task='binary', 
-                                                average='macro',
-                                                threshold=self.threshold)
+                                              average='macro',
+                                              threshold=self.threshold)
             self.precision = torchmetrics.Precision(task='binary', 
                                                       average='macro',
                                                       threshold=self.threshold)
@@ -80,84 +87,72 @@ class LitModelBinaryLateFusion(pl.LightningModule):
                                                 average='macro',
                                                 threshold=self.threshold)
 
-            # define a fusion layer 
-            self.fusion_conv = torch.nn.Conv2d(in_channels=2, out_channels=1, kernel_size=1)
-      
-      def load_model_from_checkpoint(self, checkpoint_path, in_channels):
-            model = smp.Unet(
-                        encoder_name="resnet34",
-                        in_channels=in_channels,
-                        classes=1,
-                        encoder_weights=None,
-                        decoder_use_batchnorm=True,
-                        decoder_attention_type='scse'
-                  )
-            checkpoint = torch.load(checkpoint_path, map_location=self.device)
-            model.load_state_dict(checkpoint['state_dict'])
-
-            return model
-
-      def forward(self, s1_input, planet_input):
-            # process inputs through their respective U-Ney streams
-            s1_features = self.unet_s1(s1_input)
-            planet_features = self.unet_planet(planet_input)
-
-            # concatenate features along the channel dimension and apply fusion
+      def forward(self, planet_input, s1_input):
+            s1_features = self.s1_model(s1_input)
+            planet_features = self.planet_model(planet_input)
             fused_features = torch.cat((s1_features, planet_features), dim=1)
             fused_output = self.fusion_conv(fused_features)
-
             return fused_output
 
       def training_step(self, batch, batch_idx):
             planet_input, s1_input, labels = batch
-            outputs = self.forward(s1_input, planet_input)
-            labels = labels.unsqueeze(1).type_as(s1_input) # add a channel dimension
-            loss = self.criterion(outputs, labels)
+            labels = labels.unsqueeze(1).type_as(s1_input)
 
-            self.log('train_loss', loss, prog_bar=True, on_step=False,
-                on_epoch=True, sync_dist=True)
+            s1_output = self.s1_model(s1_input)
+            planet_output = self.planet_model(planet_input)
+            fused_output = self.forward(planet_input, s1_input)
 
+            loss = self.fusion_criterion(fused_output, labels)
+
+            self.log('train_loss', loss, on_step=False, on_epoch=True, prog_bar=True, sync_dist=True)
             return loss
 
       def validation_step(self, batch, batch_idx):
             planet_input, s1_input, labels = batch
-            outputs = self.forward(s1_input, planet_input)
             labels = labels.unsqueeze(1).type_as(s1_input)
-            loss = self.criterion(outputs, labels)
+            fused_output = self.forward(planet_input, s1_input)
+            loss = self.fusion_criterion(fused_output, labels)
 
             self.log("val_loss", loss, prog_bar=True, on_step=False,
                 on_epoch=True, sync_dist=True)
-            self.log('val_f1score', self.f1_score(outputs, labels),
-                  prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
-
-            return loss
-
+            self.log('val_f1score', self.f1_score(fused_output, labels),
+                        prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
+      
       def test_step(self, batch, batch_idx):
             planet_input, s1_input, labels = batch
-            logits = self.forward(s1_input, planet_input)
-            labels = labels.unsqueeze(1).type_as(s1_input)
-            loss = self.criterion(logits, labels)
-            
+            labels = labels.unsqueeze(1).type_as(planet_input) 
+            logits = self.forward(planet_input, s1_input)
+            loss = self.fusion_criterion(logits, labels)
+
             probs = torch.sigmoid(logits) # convert logits to probabilities
             preds = (probs > self.threshold).float() # apply threshold to probrabilities
 
             acc = self.accuracy(probs.squeeze(), labels.squeeze().long())
 
-            # log loss and accuracy metrics
-            self.log('test_loss', loss, sync_dist=True)
-            self.log('accuracy', acc, sync_dist=True)
-            self.log('precision', self.precision(preds, labels), sync_dist=True)
-            self.log('recall', self.recall(preds, labels), sync_dist=True)
-            self.log('f1_score', self.f1_score(preds, labels), sync_dist=True)
+            self.log('test_accuracy', acc, sync_dist=True)
+            self.log('test_precision', self.precision(preds, labels), sync_dist=True)
+            self.log('test_recall', self.recall(preds, labels), sync_dist=True)
+            self.log('test_f1score', self.f1_score(preds, labels), sync_dist=True)
 
-            return loss
+            return
 
       def configure_optimizers(self):
-            # combine parameters from both models
-            params = list(self.unet_s1.parameters()) + list(self.unet_planet.parameters())
+                  params = list(self.s1_model.parameters()) + list(self.planet_model.parameters()) + list(self.fusion_conv.parameters())
+                  if self.hparams.optimizer == 'adam':
+                        optimizer = torch.optim.Adam(params, lr=self.hparams.lr, weight_decay=self.hparams.weight_decay)
+                  elif self.hparams.optimizer == 'sgd':
+                        optimizer = torch.optim.SGD(params, lr=self.hparams.lr, weight_decay=self.hparams.weight_decay)
+                  else:
+                        raise ValueError(f'Unknown optimizer: {self.hparams.optimizer}')
+                  
+                  # Example scheduler: StepLR
+                  scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.25)
+                  
+                  return {"optimizer": optimizer, "lr_scheduler": scheduler, "monitor": "val_loss"}
 
-            # initialize optimizer and scheduler
-            optimizer = self.optimizer(params, lr=self.lr, weight_decay=self.weight_decay)
-            scheduler = StepLR(optimizer, step_size=5, gamma=0.25)
-
-            return [optimizer], [scheduler]
+      def load_model_from_checkpoint(self, checkpoint_path, in_channels):
+            model = smp.Unet(encoder_name="resnet34", in_channels=in_channels, classes=1)
+            if checkpoint_path:
+                  checkpoint = torch.load(checkpoint_path, map_location=self.device)
+                  model.load_state_dict(checkpoint['state_dict'])
+            return model
