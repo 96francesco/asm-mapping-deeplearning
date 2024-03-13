@@ -35,13 +35,14 @@ class Sentinel1Dataset(Dataset):
                           and resampling if used in fusion with Planet images.
     """
     def __init__(self, data_dir: str, pad=False, normalization=None, transforms=None, 
-                 is_fusion=False, planet_ref_path=None):
+                 is_fusion=False, planet_ref_path=None, to_linear=False):
         self.data_dir = data_dir
         self.pad = pad
         self.normalization = normalization
         self.transforms = transforms
         self.is_fusion = is_fusion
         self.planet_ref_path = planet_ref_path
+        self.to_linear  = to_linear
 
         if is_fusion:
             self.img_folder = os.path.join(data_dir)   
@@ -101,6 +102,9 @@ class Sentinel1Dataset(Dataset):
         with rasterio.open(img_path, 'r') as src:
             img = src.read().astype(np.float32)  # VV and VH bands
 
+            if self.to_linear:
+                img = np.power(10, img / 10)
+
             if self.is_fusion:
                 identifier = os.path.basename(img_path).split('_')[1]
                 planet_img_path = os.path.join(self.planet_ref_path, f'nicfi_{identifier}')
@@ -132,7 +136,6 @@ class Sentinel1Dataset(Dataset):
 
         img_tensor = torch.from_numpy(img).float()
 
-        # gt = np.array(rasterio.open(gt_path).read(1), dtype=np.float32)
         gt = np.array(Image.open(gt_path).convert('L'), dtype=np.float32)
         gt_tensor = torch.from_numpy(gt).long()
 
