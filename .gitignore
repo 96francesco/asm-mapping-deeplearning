@@ -105,3 +105,7 @@ checkpoints/
 # model predictions and plots (temporary)
 models/predictions/
 reports
+
+# training and testing configuration
+src/models/train_config.json
+src/models/test_config.json
