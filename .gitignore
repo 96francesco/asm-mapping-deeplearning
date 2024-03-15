@@ -109,3 +109,6 @@ reports
 # training and testing configuration
 src/models/train_config.json
 src/models/test_config.json
+
+# script to print best trials from optimization db
+src/optimization/print_best_trials.py
