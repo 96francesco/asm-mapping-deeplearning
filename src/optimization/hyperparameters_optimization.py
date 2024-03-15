@@ -3,6 +3,7 @@ import pytorch_lightning as pl
 import segmentation_models_pytorch as smp
 import optuna
 import torch
+import gc
 
 from torch.utils.data import DataLoader, random_split
 from pytorch_lightning.callbacks import EarlyStopping
@@ -12,10 +13,21 @@ from optuna.pruners import MedianPruner
 
 # import custom modules
 from data.planet_dataset import PlanetDataset
-from models.lit_model_binary import LitModelBinary
-from models.lit_model_multiclass import LitModelMulticlass
-from data.normalization_functions import linear_norm_global_minmax, linear_norm_global_percentile, global_standardization
+from data.s1_dataset import Sentinel1Dataset
 
+from data.planet_dataset_normalization import linear_norm_global_percentile as planet_norm_percentile
+from data.planet_dataset_normalization import linear_norm_global_minmax as planet_norm_minmax
+from data.planet_dataset_normalization import global_standardization as planet_standardization
+
+from data.s1_dataset_normalization import global_standardization as s1_standardization
+from data.s1_dataset_normalization import linear_norm_global_minmax as s1_norm_minmax
+from data.s1_dataset_normalization import linear_norm_global_percentile as s1_norm_percentile
+
+from data.s1_dataset_normalization_lr import linear_norm_global_percentile as s1_norm_percentile_lr
+from data.s1_dataset_normalization_lr import linear_norm_global_minmax as s1_norm_minmax_lr
+from data.s1_dataset_normalization_lr import global_standardization as s1_standardization_lr
+
+from models.lit_model_binary import LitModelBinary
 
 def objective(trial):
         # parameters to optimize
@@ -31,23 +43,30 @@ def objective(trial):
         
         # create class weights
         if class_weight == 'weights':
+            # create class weights for the positive class
+            # the pixel count was carried out previously
             class_weight = torch.tensor([133822248 / 4196568])
                                    
         # select normalization function
         if normalization == 'minmax':
-            normalization_function = linear_norm_global_minmax
+            normalization_function = s1_norm_minmax_lr
         elif normalization == 'percentile':
-            normalization_function = linear_norm_global_percentile
+            normalization_function = s1_norm_percentile_lr
         elif normalization == 'standardization':    
-            normalization_function = global_standardization
+            normalization_function = s1_standardization_lr
 
         # initialize sample dataset
-        # training_dir = '/mnt/guanabana/raid/home/pasan001/thesis/dataset/asm_dataset_split_0/planet/multiclass/training_data'
-        training_dir = '/mnt/guanabana/raid/home/pasan001/thesis/dataset/asm_dataset_split_0/planet/binary/training_data'
+        training_dir = '/mnt/guanabana/raid/home/pasan001/thesis/dataset/asm_dataset_split_0/s1/training_data'
 
-        training_dataset = PlanetDataset(training_dir,
-                                        pad=True,
-                                        normalization=normalization_function)
+
+        # training_dataset = PlanetDataset(training_dir,
+        #                                 pad=True,
+        #                                 normalization=normalization_function)
+
+        training_dataset = Sentinel1Dataset(training_dir,
+                                            pad=True,
+                                            normalization=normalization_function,
+                                            to_linear=True)
 
         # extract validation subset from the training set
         total_size = len(training_dataset)
@@ -68,27 +87,13 @@ def objective(trial):
         decoder_use_batchnorm=True,
         decoder_attention_type='scse',
         encoder_weights=None,
-        in_channels=7,
+        in_channels=2,
         classes=1,
         activation=None
         )
 
         epochs = 50
 
-        # early_stop_callback = EarlyStopping(
-        #     monitor='val_loss',
-        #     min_delta=0.00,
-        #     patience=10, 
-        #     verbose=False, # disable for the study
-        #     mode='min')
-
-        # model = LitModelMulticlass(model=unet, 
-        #                                 loss=loss_function, 
-        #                                 weight_decay=weight_decay,
-        #                                 optimizer=optimizer, 
-        #                                 lr=lr,
-        #                                 pos_weight=None)
-        
         model = LitModelBinary(model=unet, 
                                 loss=loss_function, 
                                 weight_decay=weight_decay,
@@ -102,10 +107,9 @@ def objective(trial):
                                 logger=False,
                                 enable_progress_bar=False,
                                 enable_checkpointing=True,
-                                # callbacks=[early_stop_callback],
                                 accelerator='gpu',
                                 devices='2',
-                                strategy=DDPStrategy(find_unused_parameters=True)
+                                strategy=DDPStrategy(find_unused_parameters=True),
                                 )
         # fit model
         trainer.fit(model, train_loader, val_loader)
@@ -116,21 +120,24 @@ def objective(trial):
 
         return val_loss, val_f1score
 
+# clear CUDA cache
+torch.cuda.empty_cache()
+gc.collect()
+
+
 # setup study
 storage = optuna.storages.RDBStorage("sqlite:///src/optimization/binary_optimization.db")
 pruner = MedianPruner(n_startup_trials=5,
                       n_warmup_steps=10,
                       interval_steps=1)
+
 study = optuna.create_study(directions=['minimize', 'maximize'],
                             sampler=TPESampler(seed=42),
                             pruner=pruner,
                             storage=storage,
-                            study_name='unet_binary_multiobj_study',
+                            study_name='unet_binary_multiobj_study_s1',
                             load_if_exists=True)
+
 
 # start study
 study.optimize(objective, n_trials=50, gc_after_trial=True)
-
-# print best parameters
-best_params = study.best_params
-print("Best parameters:", best_params)
