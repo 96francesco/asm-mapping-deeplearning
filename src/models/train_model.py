@@ -4,7 +4,6 @@ import segmentation_models_pytorch as smp
 import torch
 import json
 import gc
-import os
 
 from pytorch_lightning.callbacks import EarlyStopping
 from pytorch_lightning.callbacks import ModelCheckpoint
@@ -28,8 +27,6 @@ from data.s1_dataset_normalization import linear_norm_global_percentile as s1_no
 from models.lit_model_binary import LitModelBinary
 from models.lit_model_multiclass import LitModelMulticlass
 from models.lit_model_fusion import LitModelBinaryLateFusion
-
-os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
 
 # set seed for reproducibility
 seed_everything(42, workers=True)
@@ -55,6 +52,7 @@ datasource_dict = {
 }
 
 if datasource_dict[config["datasource"]] == PlanetDataset:
+    print('Initializing Planet normalization functions')
     normalization_dict = {
     "standardization": planet_standardization,
     "percentile": planet_norm_percentile,
@@ -62,6 +60,7 @@ if datasource_dict[config["datasource"]] == PlanetDataset:
 }
     dataset = PlanetDataset
 elif datasource_dict[config["datasource"]] == Sentinel1Dataset:
+    print('Initializing Sentinel-1 normalization functions')
     normalization_dict = {
     "standardization": s1_standardization,
     "minmax": s1_norm_minmax,
@@ -69,6 +68,7 @@ elif datasource_dict[config["datasource"]] == Sentinel1Dataset:
 }
     dataset = Sentinel1Dataset
 elif datasource_dict[config["datasource"]] == FusionDataset:
+    print('Initializing Fusion normalization functions')
     normalization_dict = {
     "planet_minmax": planet_norm_minmax,
     "s1_standardization": s1_standardization,
@@ -83,6 +83,7 @@ training_dir = config["training_dir"]
 
 # handle data fusion case
 if datasource_dict[config["datasource"]] == FusionDataset:
+    print('Initializing fusion dataset')
     planet_normalization = normalization_dict[config["planet_normalization"]]
     s1_normalization = normalization_dict[config["s1_normalization"]]
     training_dataset = dataset(training_dir,
@@ -90,10 +91,12 @@ if datasource_dict[config["datasource"]] == FusionDataset:
                             planet_normalization=planet_normalization,
                             s1_normalization=s1_normalization)
 else:
+    print('Initializing standalone dataset')
     normalization = normalization_dict[config["normalization"]]
     training_dataset = dataset(training_dir,
                             pad=True,
-                            normalization=normalization)
+                            normalization=normalization
+                            )
 
 # extract validation subset from the training set
 total_size = len(training_dataset)
@@ -119,17 +122,26 @@ unet = smp.Unet(
     activation=None
 )
 
+# pre-trained checkpoints
+# planet_checkpoint_path = 'models/checkpoints/planet-trial56-epoch=39-val_f1score=0.72.ckpt'
+planet_checkpoint_path = 'models/checkpoints/planet-binary-optimized-trial43-epoch=59-val_f1score=0.74.ckpt'
+s1_checkpoint_path = 'models/checkpoints/s1-db-trial7-epoch=55-val_f1score=0.48.ckpt'
+
 # define model
 if config["mode"] == "fusion":
+    print('Initializing fusion model')
     model = LitModelBinaryLateFusion(
         fusion_loss=config["loss"],
         lr=config["learning_rate"],
         threshold=config["threshold"],
         optimizer=config["optimizer"],
         weight_decay=config["weight_decay"],
-        pos_weight=None if config['class_weight'] == "None" else class_weight
+        pos_weight=None if config['class_weight'] == "None" else class_weight,
+        s1_checkpoint=s1_checkpoint_path,
+        planet_checkpoint=planet_checkpoint_path
     )
 else:
+    print('Initializing standalone model')
     model = mode_dict[config["mode"]]
     model = model(model=unet,
                 in_channels=config["in_channels"],
@@ -166,11 +178,12 @@ trainer = pl.Trainer(max_epochs=config["epochs"],
                      log_every_n_steps=10,
                      accelerator='gpu',
                      devices=2,
-                     detect_anomaly=False,
+                     detect_anomaly=True,
                      strategy=DDPStrategy(find_unused_parameters=True),
                      callbacks=[early_stop_callback, checkpoint_callback],
                      accumulate_grad_batches=4,
-                    #  precision=16
+                     precision=16,
+                     gradient_clip_val=0.5,
                      )
 print(model.hparams)
 trainer.fit(model, train_loader, val_loader)
