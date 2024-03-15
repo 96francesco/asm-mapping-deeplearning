@@ -1,9 +1,0 @@
-{     
-      "datasource": "s1",
-      "testing_dir": "/mnt/guanabana/raid/home/pasan001/thesis/dataset/asm_dataset_split_0/s1/training_data",
-      "normalization": "minmax",
-      "checkpoint": "/mnt/guanabana/raid/home/pasan001/asm-mapping-deeplearning/models/checkpoints/s1-binary-trial47-epoch=39-val_f1score=0.47.ckpt",
-
-      "mode": "binary",
-      "batch_size": 8
-}
