@@ -31,7 +31,7 @@ class LitModelBinary(pl.LightningModule):
             learning rate schedulers.
     """
     def __init__(self, model=None, loss='ce', pos_weight=None, weight_decay=1e-5,
-                 lr=1e-3, threshold=0.5, optimizer='sgd'):
+                 lr=1e-3, threshold=0.5, optimizer='sgd', in_channels=7):
         super().__init__()
         self.weight_decay = weight_decay
         self.lr = lr
@@ -53,7 +53,7 @@ class LitModelBinary(pl.LightningModule):
                     decoder_use_batchnorm=True,
                     decoder_attention_type='scse',
                     encoder_weights=None,
-                    in_channels=7,
+                    in_channels=in_channels,
                     classes=1
             )
             pass
