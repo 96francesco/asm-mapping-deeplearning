@@ -1,14 +1,11 @@
 import pytorch_lightning as pl
-import segmentation_models_pytorch as smp
 import torch
 import json
 import gc
 
-from pytorch_lightning.callbacks import EarlyStopping
-from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning import seed_everything
 from pytorch_lightning.strategies import DDPStrategy
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 
 # import custom modules
 from data.planet_dataset import PlanetDataset
@@ -105,6 +102,6 @@ print(model.hparams)
 
 # test the model
 trainer = pl.Trainer(accelerator='gpu',
-                     devices=4,
+                     devices=2,
                      strategy=DDPStrategy(find_unused_parameters=True))
 trainer.test(model, test_loader)
