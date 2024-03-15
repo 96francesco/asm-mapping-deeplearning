@@ -123,7 +123,7 @@ class Sentinel1Dataset(Dataset):
                     src_crs=src.crs,
                     dst_transform=target_transform,
                     dst_crs=src.crs,
-                    resampling=Resampling.nearest
+                    resampling=Resampling.cubic
                 )
                 img = dst_img
 
