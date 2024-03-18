@@ -12,14 +12,17 @@ class LitModelBinaryLateFusion(pl.LightningModule):
             self.save_hyperparameters()
             self.threshold = threshold
 
-            # Stream-specific models
-            # Define two separate U-Net models for Sentinel-1 and Planet data
+            # stream-specific models
             if s1_checkpoint is not None:
-                  # Load Sentinel-1 model from checkpoint
+                  # load Sentinel-1 model from checkpoint
                   self.s1_model = self.load_model_from_checkpoint(s1_checkpoint, 
                                                                   self.hparams.s1_in_channels)
+                  # for param in self.s1_model.parameters():
+                  #       param.requires_grad = False
+
+
             else:
-                  # Initialize a new Sentinel-1 model
+                  # initialize a new Sentinel-1 model
                   self.s1_model = smp.Unet(
                   encoder_name="resnet34",
                   in_channels=self.hparams.s1_in_channels,
@@ -30,11 +33,11 @@ class LitModelBinaryLateFusion(pl.LightningModule):
                   )
             
             if planet_checkpoint is not None:
-                  # Load Planet model from checkpoint
                   self.planet_model = self.load_model_from_checkpoint(planet_checkpoint, 
                                                                       self.hparams.planet_in_channels)
+                  # for param in self.planet_model.parameters():
+                  #       param.requires_grad = False
             else:
-                  # Initialize a new Planet model
                   self.planet_model = smp.Unet(
                   encoder_name="resnet34",
                   in_channels=self.hparams.planet_in_channels,
@@ -44,14 +47,14 @@ class LitModelBinaryLateFusion(pl.LightningModule):
                   decoder_attention_type='scse'
             )
 
-            # Loss for the single streams
+            # loss for the single streams
             self.s1_loss = smp.losses.JaccardLoss(mode='binary')
             self.planet_loss = smp.losses.FocalLoss(alpha=0.25, gamma=2.0, mode='binary')
 
-            # Fusion layer
+            # define fusion layer
             self.fusion_conv = nn.Conv2d(in_channels=2, out_channels=1, kernel_size=1)
 
-            # Criterion based on fusion_loss and pos_weight
+            # define loss function
             if fusion_loss == 'ce':
                   if pos_weight is not None:
                         pos_weight_tensor = torch.tensor(pos_weight).to(self.device)
@@ -65,7 +68,7 @@ class LitModelBinaryLateFusion(pl.LightningModule):
             else:
                   raise ValueError(f'Unknown loss function: {fusion_loss}')
 
-            # Optimizer
+            # define optimizer
             if optimizer == 'adam':
                   self.optimizer = torch.optim.Adam
             elif optimizer == 'sgd':
@@ -73,7 +76,7 @@ class LitModelBinaryLateFusion(pl.LightningModule):
             else:
                   raise ValueError(f'Unknown optimizer: {optimizer}')
 
-            # Metrics with the specified threshold
+            # define metrics to compute
             self.accuracy = torchmetrics.Accuracy(task='binary', 
                                               average='macro',
                                               threshold=self.threshold)
@@ -84,6 +87,9 @@ class LitModelBinaryLateFusion(pl.LightningModule):
                                                 average='macro',
                                                 threshold=self.threshold)
             self.f1_score = torchmetrics.F1Score(task='binary', 
+                                                average='macro',
+                                                threshold=self.threshold)
+            self.iou = torchmetrics.JaccardIndex(task='binary',
                                                 average='macro',
                                                 threshold=self.threshold)
 
@@ -133,6 +139,7 @@ class LitModelBinaryLateFusion(pl.LightningModule):
             self.log('test_precision', self.precision(preds, labels), sync_dist=True)
             self.log('test_recall', self.recall(preds, labels), sync_dist=True)
             self.log('test_f1score', self.f1_score(preds, labels), sync_dist=True)
+            self.log('test_iou', self.iou(preds, labels), sync_dist=True)
 
             return
 
@@ -145,14 +152,18 @@ class LitModelBinaryLateFusion(pl.LightningModule):
                   else:
                         raise ValueError(f'Unknown optimizer: {self.hparams.optimizer}')
                   
-                  # Example scheduler: StepLR
+                  # define scheduler
                   scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.25)
                   
                   return {"optimizer": optimizer, "lr_scheduler": scheduler, "monitor": "val_loss"}
 
       def load_model_from_checkpoint(self, checkpoint_path, in_channels):
-            model = smp.Unet(encoder_name="resnet34", in_channels=in_channels, classes=1)
-            if checkpoint_path:
-                  checkpoint = torch.load(checkpoint_path, map_location=self.device)
-                  model.load_state_dict(checkpoint['state_dict'])
+            model = smp.Unet(encoder_name="resnet34", 
+                             in_channels=in_channels, 
+                             classes=1, 
+                             decoder_attention_type='scse')
+            checkpoint = torch.load(checkpoint_path, map_location=self.device)
+            adjusted_state_dict = {k.replace('model.', ''): v for k, v in checkpoint['state_dict'].items()}  # Adjust the keys
+            model.load_state_dict(adjusted_state_dict)
             return model
+
