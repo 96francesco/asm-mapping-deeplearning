@@ -1,10 +1,8 @@
-import pytorch_lightning as pl
 import torch
 import json
 import gc
 
 from pytorch_lightning import seed_everything
-from pytorch_lightning.strategies import DDPStrategy
 from torch.utils.data import DataLoader
 
 # import custom modules
@@ -103,7 +101,7 @@ test_loader = DataLoader(testing_dataset,
                          num_workers=4)
 
 
-indices = [18, 69, 112]
+indices = [234, 11, 300]
 filename = config['checkpoint_name']
 print(filename)
 get_predictions(model, 
