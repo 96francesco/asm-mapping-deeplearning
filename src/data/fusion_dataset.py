@@ -24,10 +24,14 @@ class FusionDataset(Dataset):
       Returns:
             The processed images from both datasets, and their ground truths.
     """
-      def __init__(self, root_dir, train=True, transforms=None, planet_normalization=None, s1_normalization=None):
+      def __init__(self, root_dir, train=True, is_inference=False, transforms=None, planet_normalization=None, s1_normalization=None):
             # get data directories
-            s1_data_dir = os.path.join(root_dir, 'training_data' if train else 'testing_data', 'images', 's1')
-            planet_data_dir = os.path.join(root_dir, 'training_data' if train else 'testing_data', 'images', 'planet')
+            if is_inference:
+                  s1_data_dir = os.path.join(root_dir, 'images', 's1')
+                  planet_data_dir = os.path.join(root_dir, 'images', 'planet')
+            else:
+                  s1_data_dir = os.path.join(root_dir, 'training_data' if train else 'testing_data', 'images', 's1')
+                  planet_data_dir = os.path.join(root_dir, 'training_data' if train else 'testing_data', 'images', 'planet')
 
             # initialize Sentinel1Dataset and PlanetDatase
             self.s1_dataset = Sentinel1Dataset(data_dir=s1_data_dir, 
