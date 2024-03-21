@@ -1,0 +1,83 @@
+---
+title: "Spatial blocks creation for train/test split"
+author: "Francesco Pasanisi"
+date: "October 12, 2023"
+output:
+  html_document:
+    df_print: paged
+project: "Using high-resolution satellite imagery and deep learning to map artisanal mining spatial extent in the DRC"
+---
+
+## 0. Install and import needed packages
+
+```{r}
+if(!"blockCV" %in% installed.packages()){install.packages("blockCV")}
+if(!"sf" %in% installed.packages()){install.packages("sf")}
+
+library(blockCV)
+library(sf)
+```
+
+## 1. Get data
+
+```{r}
+asm_sites_url <- file.choose()
+study_area_url <- file.choose()
+```
+
+```{r}
+asm_sites = st_read(asm_sites_url)
+study_area = st_read(study_area_url)
+```
+
+```{r}
+# clip the sites with the study area
+asm_sites = st_intersection(asm_sites, study_area)
+```
+
+## 2. Create spatial blocks and do the split
+
+Here spatial blocks of 100 km of range are created. This range is controlled by the 'size' parameter of cv_spatial(). 'hexagon' is set to FALSE in order to have square blocks.
+
+```{r}
+blocks <- cv_spatial(x = asm_sites,
+                 hexagon = F,
+                 size = 100000,
+                 k = 10)
+```
+
+Hereafter there is the train/test split. The created blocks are treated in order to have approximately the 70% of points assigned to the training set and the remaining 30% to the test set.
+
+```{r}
+block_assignments <- blocks$folds_ids
+unique_blocks <- unique(block_assignments)
+
+# 70% of training data is considered
+train_blocks <- sample(unique_blocks, size = round(length(unique_blocks) * 0.7))
+
+# make the actual split
+train_data <- asm_sites[block_assignments %in% train_blocks, ]
+test_data <- asm_sites[!block_assignments %in% train_blocks, ]
+```
+
+Let's visualize the split!
+
+```{r}
+spatial_blocks <- blocks$blocks # extract blocks geometry
+
+plot(st_geometry(asm_sites), col = "grey", pch = 16, cex = 0.5)
+plot(st_geometry(train_data), col = "red", pch = 16, cex = 0.5, add = TRUE)
+plot(st_geometry(test_data), col = "blue", pch = 16, cex = 0.5, add = TRUE)
+plot(st_geometry(spatial_blocks), col = NA, border = "black", add = T)
+legend("topright", legend = c("Training Data", "Testing Data"), fill = c("red", "blue"))
+```
+
+## 3. Export data
+
+```{r}
+# set the working directory here
+setwd("C:/Users/franc/OneDrive - Wageningen University & Research/MGI/thesis/preprocessing_scripts")
+
+st_write(train_data, "train_data_split_9.geojson", delete_dsn = T)
+st_write(test_data, "test_data_split_9.geojson", delete_dsn = T)
+```
