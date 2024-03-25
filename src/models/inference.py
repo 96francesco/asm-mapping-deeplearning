@@ -20,7 +20,7 @@ model.eval()
 model.to('cuda' if torch.cuda.is_available() else 'cpu')
 
 # define dataset
-dataset_dir = '/mnt/guanabana/raid/home/pasan001/thesis/dataset/full_dataset'
+dataset_dir = '/mnt/guanabana/raid/home/pasan001/thesis/dataset/inference_dataset'
 dataset = FusionDataset(root_dir=dataset_dir,
                         train=False,
                         is_inference=True,
@@ -30,18 +30,18 @@ dataset = FusionDataset(root_dir=dataset_dir,
 dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=4)
 
 # load CRS
-reference_image_path = '/mnt/guanabana/raid/home/pasan001/thesis/dataset/full_dataset/images/planet/nicfi_0.tif'
+reference_image_path = '/mnt/guanabana/raid/home/pasan001/thesis/dataset/inference_dataset/images/planet/nicfi_0.tif'
 with rasterio.open(reference_image_path) as ref:
     crs = ref.crs
     transform = ref.transform
 
-output_folder = 'models/predictions/output_images'
+output_folder = 'models/predictions/output_images_full'
 if not os.path.exists(output_folder):
     os.makedirs(output_folder)
 
 for i, batch in enumerate(dataloader):
       planet_input, s1_input = batch[:2] 
-      file_path = dataset.planet_dataset.dataset[i][0]
+      file_path = dataset.planet_dataset.dataset[i]
       
       with torch.no_grad():
             output = model(planet_input.to(model.device), s1_input.to(model.device))
