@@ -23,6 +23,7 @@ class Sentinel1Dataset(Dataset):
         transforms (callable, optional): Augmentation transforms to be applied to the images.
         is_fusion (bool): Specifies if the dataset is being used in fusion with Planet images,
                           enabling resampling to match Planet images' resolution.
+        is_inference (bool): Specifies if the dataset is being used for inference.
         planet_ref_path (str, optional): Directory path to the Planet images, required if is_fusion is True.
         img_folder (str): Subdirectory within data_dir containing Sentinel-1 images.
         gt_folder (str): Subdirectory within data_dir containing the ground truth images.
@@ -34,40 +35,42 @@ class Sentinel1Dataset(Dataset):
         __getitem__(idx): Retrieves the image-ground truth pair at the specified index, applying any specified transformations
                           and resampling if used in fusion with Planet images.
     """
-    def __init__(self, data_dir: str, pad=False, normalization=None, transforms=None, 
-                 is_fusion=False, planet_ref_path=None, to_linear=False):
+    def __init__(self, data_dir, pad=False, normalization=None, transforms=None, 
+                 is_fusion=False, planet_ref_path=None, to_linear=False, is_inference=False):
         self.data_dir = data_dir
         self.pad = pad
         self.normalization = normalization
         self.transforms = transforms
         self.is_fusion = is_fusion
         self.planet_ref_path = planet_ref_path
-        self.to_linear  = to_linear
+        self.to_linear = to_linear
+        self.is_inference = is_inference
 
-        if is_fusion:
-            self.img_folder = os.path.join(data_dir)   
-            goal_dir = os.path.join(data_dir,  '../../gt') 
-            self.gt_folder = os.path.normpath(goal_dir)
-            img_prefix = 's1_'
-            gt_prefix = 'nicfi_gt_'
+        # construct image folder paths correctly, based on the mode and fusion settting
+        if is_inference:
+            self.img_folder = os.path.join(data_dir)
         else:
-            self.img_folder = os.path.join(data_dir, 'images')
-            self.gt_folder = os.path.join(data_dir, 'gt')
-            img_prefix = 's1_'
-            gt_prefix = 'resampled_nicfi_gt_'
+            self.img_folder = os.path.join(data_dir, 'images/s1') if is_fusion else os.path.join(data_dir, 'images')
 
-        img_filenames = sorted(os.listdir(self.img_folder))
-        gt_filenames = sorted(os.listdir(self.gt_folder))
+        self.gt_folder = os.path.join(data_dir, 'gt') if not is_inference else None
 
         self.dataset = []
-        for img_name in img_filenames:
-            if img_name.startswith(img_prefix):
-                # construct corresponding ground truth file name
+        img_filenames = sorted(os.listdir(self.img_folder))
+
+        if not is_inference:
+            gt_filenames = sorted(os.listdir(self.gt_folder))
+            img_prefix = 's1_'
+            gt_prefix = 'resampled_' + img_prefix if is_fusion else img_prefix
+            for img_name in img_filenames:
                 gt_name = img_name.replace(img_prefix, gt_prefix)
-            if gt_name in gt_filenames:
+                if gt_name in gt_filenames:
+                    img_path = os.path.join(self.img_folder, img_name)
+                    gt_path = os.path.join(self.gt_folder, gt_name)
+                    self.dataset.append((img_path, gt_path))
+        else:
+            for img_name in img_filenames:
                 img_path = os.path.join(self.img_folder, img_name)
-                gt_path = os.path.join(self.gt_folder, gt_name)
-                self.dataset.append((img_path, gt_path))
+                self.dataset.append(img_path)
 
     def __len__(self):
         return len(self.dataset)
@@ -94,18 +97,23 @@ class Sentinel1Dataset(Dataset):
             img_tensor = torch.nn.functional.pad(img_tensor, padding, "constant", 0)
 
         return img_tensor
-
+    
     def __getitem__(self, idx):
-        img_path, gt_path = self.dataset[idx]
-        
+        img_path = self.dataset[idx]
 
         with rasterio.open(img_path, 'r') as src:
-            img = src.read().astype(np.float32)  # VV and VH bands
+            img = src.read().astype(np.float32) 
+
+            # handle NaN values and apply a median filter
+            img = np.nan_to_num(img, nan=np.median(img[~np.isnan(img)]))
+            img = median_filter(img, size=3)
 
             if self.to_linear:
+                # Convert from decibel to linear scale
                 img = np.power(10, img / 10)
 
-            if self.is_fusion:
+            if self.is_fusion and self.planet_ref_path:
+                # resample to match Planet images' resolution
                 identifier = os.path.basename(img_path).split('_')[1]
                 planet_img_path = os.path.join(self.planet_ref_path, f'nicfi_{identifier}')
 
@@ -115,7 +123,7 @@ class Sentinel1Dataset(Dataset):
                 # define the destination array for the reprojected data
                 dst_img = np.zeros((src.count, target_height, target_width), dtype=np.float32)
                 
-                # perform resampling to match Planet images' resolution
+                # perform reprojection
                 reproject(
                     source=img,
                     destination=dst_img,
@@ -127,20 +135,23 @@ class Sentinel1Dataset(Dataset):
                 )
                 img = dst_img
 
-        # replace NaN values using a median filter
-        img = np.nan_to_num(img, nan=np.median(img[~np.isnan(img)]))
-        img = median_filter(img, size=3)
+            if self.normalization:
+                img = self.normalization(img)
 
-        if self.normalization is not None:
-            img = self.normalization(img)
+            img_tensor = torch.from_numpy(img).float()
 
-        img_tensor = torch.from_numpy(img).float()
+        if not self.is_inference:
+            gt_path = os.path.join(self.gt_folder, os.path.basename(img_path).replace('s1_', 'resampled_'))
+            gt = np.array(Image.open(gt_path).convert('L'), dtype=np.float32)
+            gt_tensor = torch.from_numpy(gt).long()
 
-        gt = np.array(Image.open(gt_path).convert('L'), dtype=np.float32)
-        gt_tensor = torch.from_numpy(gt).long()
+            if self.pad:
+                img_tensor, gt_tensor = self.pad_to_target(img_tensor, gt_tensor)
+                
+            return img_tensor, gt_tensor
+        
+        else:
+            if self.pad:
+                img_tensor = self.pad_to_target(img_tensor)
 
-        if self.pad is True:
-            img_tensor = self.pad_to_target(img_tensor)
-            gt_tensor = self.pad_to_target(gt_tensor.unsqueeze(0)).squeeze(0).long()
-
-        return img_tensor, gt_tensor
+            return img_tensor
