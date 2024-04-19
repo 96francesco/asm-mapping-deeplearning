@@ -35,7 +35,7 @@ with open('src/models/test_config.json') as f:
     config = json.load(f)
 
 mode_dict = {
-    "binary": LitModelStandalone,
+    "standalone": LitModelStandalone,
     "fusion": LitModelLateFusion
 }
 
