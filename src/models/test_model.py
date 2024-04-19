@@ -20,9 +20,8 @@ from data.s1_dataset_normalization import global_standardization as s1_standardi
 from data.s1_dataset_normalization import linear_norm_global_minmax as s1_norm_minmax
 from data.s1_dataset_normalization import linear_norm_global_percentile as s1_norm_percentile
 
-from models.lit_model_binary import LitModelBinary
-from models.lit_model_multiclass import LitModelMulticlass
-from models.lit_model_fusion import LitModelBinaryLateFusion
+from models.lit_model_standalone import LitModelStandalone
+from models.lit_model_fusion import LitModelLateFusion
 
 # set seed for reproducibility
 seed_everything(42, workers=True)
@@ -36,9 +35,8 @@ with open('src/models/test_config.json') as f:
     config = json.load(f)
 
 mode_dict = {
-    "binary": LitModelBinary,
-    "multiclass": LitModelMulticlass,
-    "fusion": LitModelBinaryLateFusion
+    "binary": LitModelStandalone,
+    "fusion": LitModelLateFusion
 }
 
 datasource_dict = {

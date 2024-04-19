@@ -24,9 +24,8 @@ from data.s1_dataset_normalization import global_standardization as s1_standardi
 from data.s1_dataset_normalization import linear_norm_global_minmax as s1_norm_minmax
 from data.s1_dataset_normalization import linear_norm_global_percentile as s1_norm_percentile
 
-from models.lit_model_binary import LitModelBinary
-from models.lit_model_multiclass import LitModelMulticlass
-from models.lit_model_fusion import LitModelBinaryLateFusion
+from models.lit_model_standalone import LitModelStandalone
+from models.lit_model_fusion import LitModelLateFusion
 
 # set seed for reproducibility
 seed_everything(42, workers=True)
@@ -40,9 +39,8 @@ with open('src/models/train_config.json') as f:
     config = json.load(f)
 
 mode_dict = {
-    "binary": LitModelBinary,
-    "multiclass": LitModelMulticlass,
-    "fusion": LitModelBinaryLateFusion
+    "standalone": LitModelStandalone,
+    "fusion": LitModelLateFusion
 }
 
 datasource_dict = {
@@ -123,14 +121,13 @@ unet = smp.Unet(
 )
 
 # pre-trained checkpoints
-# planet_checkpoint_path = 'models/checkpoints/planet-trial56-epoch=39-val_f1score=0.72.ckpt'
-planet_checkpoint_path = 'models/checkpoints/planet-binary-optimized-trial43-epoch=59-val_f1score=0.74.ckpt'
-s1_checkpoint_path = 'models/checkpoints/s1-db-trial7-epoch=55-val_f1score=0.48.ckpt'
+planet_checkpoint_path = 'models/checkpoints/planet-best-model.ckpt'
+s1_checkpoint_path = 'models/checkpoints/s1-best-model.ckpt'
 
 # define model
 if config["mode"] == "fusion":
     print('Initializing fusion model')
-    model = LitModelBinaryLateFusion(
+    model = LitModelLateFusion(
         fusion_loss=config["loss"],
         lr=config["learning_rate"],
         threshold=config["threshold"],
@@ -178,7 +175,7 @@ trainer = pl.Trainer(max_epochs=config["epochs"],
                      log_every_n_steps=10,
                      accelerator='gpu',
                      devices=2,
-                     detect_anomaly=True,
+                     detect_anomaly=False,
                      strategy=DDPStrategy(find_unused_parameters=True),
                      callbacks=[early_stop_callback, checkpoint_callback],
                      accumulate_grad_batches=4,

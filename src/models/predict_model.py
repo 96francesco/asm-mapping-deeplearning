@@ -18,9 +18,8 @@ from data.s1_dataset_normalization import global_standardization as s1_standardi
 from data.s1_dataset_normalization import linear_norm_global_minmax as s1_norm_minmax
 from data.s1_dataset_normalization import linear_norm_global_percentile as s1_norm_percentile
 
-from models.lit_model_binary import LitModelBinary
-from models.lit_model_multiclass import LitModelMulticlass
-from models.lit_model_fusion import LitModelBinaryLateFusion
+from models.lit_model_standalone import LitModelStandalone
+from models.lit_model_fusion import LitModelLateFusion
 
 from visualization.get_predictions import get_predictions
 from visualization.plot_binary_segmentation import plot_segmentation_outputs
@@ -38,9 +37,8 @@ with open('src/models/test_config.json') as f:
     config = json.load(f)
 
 mode_dict = {
-    "binary": LitModelBinary,
-    "multiclass": LitModelMulticlass,
-    "fusion": LitModelBinaryLateFusion
+    "binary": LitModelStandalone,
+    "fusion": LitModelLateFusion
 }
 
 datasource_dict = {
@@ -93,6 +91,7 @@ model = model.load_from_checkpoint(checkpoint_path=config["checkpoint"])
 # set the model for evaluation
 model.eval()
 model.freeze()
+print(model.hparams)
 
 batch_size = config["batch_size"]
 test_loader = DataLoader(testing_dataset, 
@@ -101,7 +100,7 @@ test_loader = DataLoader(testing_dataset,
                          num_workers=4)
 
 
-indices = [234, 11, 300]
+indices = [18, 69, 222]
 filename = config['checkpoint_name']
 print(filename)
 get_predictions(model, 
@@ -112,7 +111,13 @@ get_predictions(model,
 
 predictions_file = f'models/predictions/{filename}-{indices}.pth'
 plot_segmentation_outputs = plot_segmentation_outputs(predictions_file, 
-                                                      f'{filename}_{indices}.png',
+                                                      f'{filename}_{indices}',
                                                       is_fusion=True,
                                                       is_optical=False,
-                                                      threshold=0.6)
+                                                      threshold=0.3,
+                                                      original_dimensions=(375, 375))
+# plot_segmentation_outputs(predictions_file=predictions_file, 
+#                         output_name=f'fusion_predictions_{indices}',
+#                         model_type='fusion',
+#                         threshold=0.6,
+#                         original_dimensions=(375, 375))

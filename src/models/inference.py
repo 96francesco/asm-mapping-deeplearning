@@ -8,14 +8,14 @@ from pytorch_lightning import seed_everything
 from data.fusion_dataset import FusionDataset
 from data.planet_dataset_normalization import linear_norm_global_minmax as planet_norm
 from data.s1_dataset_normalization import global_standardization as s1_norm
-from models.lit_model_fusion import LitModelBinaryLateFusion
+from models.lit_model_fusion import LitModelLateFusion
 
 # set seed for reproducibility
 seed_everything(42, workers=True)
 
 # load trained model
-model_checkpoint_path = 'models/checkpoints/fusion-split-0.ckpt'
-model = LitModelBinaryLateFusion.load_from_checkpoint(checkpoint_path=model_checkpoint_path)
+model_checkpoint_path = 'models/checkpoints/fusion-full-dataset-ce-epoch=43-val_f1score=0.73.ckpt'
+model = LitModelLateFusion.load_from_checkpoint(checkpoint_path=model_checkpoint_path)
 model.eval()
 model.to('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -35,7 +35,7 @@ with rasterio.open(reference_image_path) as ref:
     crs = ref.crs
     transform = ref.transform
 
-output_folder = 'models/predictions/output_images_full'
+output_folder = 'models/predictions/test_inference'
 if not os.path.exists(output_folder):
     os.makedirs(output_folder)
 
@@ -48,7 +48,7 @@ for i, batch in enumerate(dataloader):
       prediction = torch.sigmoid(output)
       
       # convert probabilities to classes
-      prediction_binary = (prediction > 0.6).float()
+      prediction_binary = (prediction > 0.4).float()
 
       prediction_np = prediction_binary.cpu().numpy().squeeze()
 

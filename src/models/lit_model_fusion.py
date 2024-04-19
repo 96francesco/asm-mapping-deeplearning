@@ -4,7 +4,7 @@ import torch.nn as nn
 import segmentation_models_pytorch as smp
 import torchmetrics
 
-class LitModelBinaryLateFusion(pl.LightningModule):
+class LitModelLateFusion(pl.LightningModule):
       def __init__(self, planet_checkpoint=None, s1_checkpoint=None,
                   fusion_loss='ce', lr=1e-3, threshold=0.5, optimizer='adam',
                   s1_in_channels=2, planet_in_channels=7, weight_decay=1e-5, pos_weight=None):

@@ -10,7 +10,7 @@ from optuna.pruners import MedianPruner
 import gc
 
 from data.fusion_dataset import FusionDataset  
-from models.lit_model_fusion import LitModelBinaryLateFusion
+from models.lit_model_fusion import LitModelLateFusion
 
 from data.planet_dataset_normalization import linear_norm_global_minmax as planet_norm_minmax
 from data.s1_dataset_normalization import global_standardization as s1_standardization
@@ -39,9 +39,9 @@ def objective(trial):
       val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
 
       # Model initialization
-      model = LitModelBinaryLateFusion(
-            s1_checkpoint='',
-            planet_checkpoint='',
+      model = LitModelLateFusion(
+            s1_checkpoint='models/checkpoints/s1-db-trial7-epoch=55-val_f1score=0.48.ckpt',
+            planet_checkpoint='models/checkpoints/planet-binary-optimized-trial43-epoch=59-val_f1score=0.74.ckpt',
             lr=lr,
             threshold=threshold,
             weight_decay=weight_decay,
@@ -75,7 +75,7 @@ torch.cuda.empty_cache()
 gc.collect()
 
 # setup study
-storage = optuna.storages.RDBStorage("sqlite:///src/optimization/binary_optimization.db")
+storage = optuna.storages.RDBStorage("sqlite:///src/optimization/optimization.db")
 pruner = MedianPruner(n_startup_trials=5,
                       n_warmup_steps=10,
                       interval_steps=1)
@@ -84,7 +84,7 @@ study = optuna.create_study(directions=['minimize', 'maximize'],
                             sampler=TPESampler(seed=42),
                             pruner=pruner,
                             storage=storage,
-                            study_name='unet_binary_latefusion_pretrained-streams',
+                            study_name='lf_pretrained_streams',
                             load_if_exists=True)
 
 # start study
