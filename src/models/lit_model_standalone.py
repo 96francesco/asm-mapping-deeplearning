@@ -6,7 +6,7 @@ import pytorch_lightning as pl
 
 from torch.optim.lr_scheduler import StepLR
 
-class LitModelBinary(pl.LightningModule):
+class LitModelStandalone(pl.LightningModule):
     """
     A LightningModule for binary classification with various loss functions and optimizers.
     Implements forward pass, training, validation, test steps, and optimizer configuration.
