@@ -35,8 +35,6 @@ class LitModelLateFusion(pl.LightningModule):
             if planet_checkpoint is not None:
                   self.planet_model = self.load_model_from_checkpoint(planet_checkpoint, 
                                                                       self.hparams.planet_in_channels)
-                  # for param in self.planet_model.parameters():
-                  #       param.requires_grad = False
             else:
                   self.planet_model = smp.Unet(
                   encoder_name="resnet34",
@@ -163,7 +161,7 @@ class LitModelLateFusion(pl.LightningModule):
                              classes=1, 
                              decoder_attention_type='scse')
             checkpoint = torch.load(checkpoint_path, map_location=self.device)
-            adjusted_state_dict = {k.replace('model.', ''): v for k, v in checkpoint['state_dict'].items()}  # Adjust the keys
+            adjusted_state_dict = {k.replace('model.', ''): v for k, v in checkpoint['state_dict'].items()}
             model.load_state_dict(adjusted_state_dict)
             return model
 
