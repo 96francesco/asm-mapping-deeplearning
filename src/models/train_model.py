@@ -9,6 +9,7 @@ from pytorch_lightning.callbacks import EarlyStopping
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning import seed_everything
 from pytorch_lightning.strategies import DDPStrategy
+from pytorch_lightning.profilers import PyTorchProfiler
 from torch.utils.data import DataLoader, random_split
 
 # import custom modules
@@ -105,9 +106,12 @@ train_set, val_set = random_split(training_dataset, [train_size, val_size])
 # initialize dataloader
 batch_size = config["batch_size"]
 train_loader = DataLoader(train_set, batch_size=batch_size,
-                              shuffle=True, num_workers=9)
+                              shuffle=True, num_workers=9,
+                              persistent_workers=True, pin_memory=True,
+                              prefetch_factor=2)
 val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False,
-                            num_workers=9)
+                            num_workers=9, persistent_workers=True, pin_memory=True,
+                            prefetch_factor=2)
 
 # define U-Net model
 unet = smp.Unet(
@@ -120,9 +124,9 @@ unet = smp.Unet(
     activation=None
 )
 
-# pre-trained checkpoints
-planet_checkpoint_path = 'models/checkpoints/planet-best-model.ckpt'
-s1_checkpoint_path = 'models/checkpoints/s1-best-model.ckpt'
+# pre-trained checkpoints, for Late Fusion mode
+planet_checkpoint_path = 'models/checkpoints/planet-binary-optimized-trial43-epoch=59-val_f1score=0.74.ckpt'
+s1_checkpoint_path = 'models/checkpoints/s1-db-trial7-epoch=55-val_f1score=0.48.ckpt'
 
 # define model
 if config["mode"] == "fusion":
@@ -170,6 +174,9 @@ checkpoint_callback = ModelCheckpoint(
     mode='max'
 )
 
+# initialize profiler
+profiler = PyTorchProfiler()
+
 # define trainer and start training
 trainer = pl.Trainer(max_epochs=config["epochs"],
                      log_every_n_steps=10,
@@ -178,9 +185,10 @@ trainer = pl.Trainer(max_epochs=config["epochs"],
                      detect_anomaly=False,
                      strategy=DDPStrategy(find_unused_parameters=True),
                      callbacks=[early_stop_callback, checkpoint_callback],
-                     accumulate_grad_batches=4,
-                     precision=16,
-                     gradient_clip_val=0.5,
+                     profiler=profiler,
+                    #  accumulate_grad_batches=4,
+                    #  precision=16,
+                    #  gradient_clip_val=0.5,
                      )
 print(model.hparams)
 trainer.fit(model, train_loader, val_loader)
