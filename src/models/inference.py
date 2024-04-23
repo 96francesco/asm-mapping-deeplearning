@@ -13,24 +13,25 @@ from models.lit_model_fusion import LitModelLateFusion
 # set seed for reproducibility
 seed_everything(42, workers=True)
 
-# load trained model
+# load trained Late Fusion model
 model_checkpoint_path = 'models/checkpoints/fusion-full-dataset-ce-epoch=43-val_f1score=0.73.ckpt'
 model = LitModelLateFusion.load_from_checkpoint(checkpoint_path=model_checkpoint_path)
 model.eval()
 model.to('cuda' if torch.cuda.is_available() else 'cpu')
 
 # define dataset
-dataset_dir = '/mnt/guanabana/raid/home/pasan001/thesis/dataset/inference_dataset'
+dataset_dir = '/mnt/guanabana/raid/home/pasan001/asm-mapping-deeplearning/data/inference_dataset'
 dataset = FusionDataset(root_dir=dataset_dir,
                         train=False,
                         is_inference=True,
                         planet_normalization=planet_norm,
                         s1_normalization=s1_norm)
 
-dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=4)
+dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=9,
+                        persistent_workers=True)
 
 # load CRS
-reference_image_path = '/mnt/guanabana/raid/home/pasan001/thesis/dataset/inference_dataset/images/planet/nicfi_0.tif'
+reference_image_path = '/mnt/guanabana/raid/home/pasan001/asm-mapping-deeplearning/data/inference_dataset/images/planet/nicfi_0.tif'
 with rasterio.open(reference_image_path) as ref:
     crs = ref.crs
     transform = ref.transform
