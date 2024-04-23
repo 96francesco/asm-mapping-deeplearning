@@ -35,7 +35,7 @@ class Sentinel1Dataset(Dataset):
         __getitem__(idx): Retrieves the image-ground truth pair at the specified index, applying any specified transformations
                           and resampling if used in fusion with Planet images.
     """
-    def __init__(self, data_dir, pad=False, normalization=None, transforms=None, 
+    def __init__(self, data_dir: str, pad=False, normalization=None, transforms=None, 
                  is_fusion=False, planet_ref_path=None, to_linear=False, is_inference=False):
         self.data_dir = data_dir
         self.pad = pad
@@ -60,9 +60,10 @@ class Sentinel1Dataset(Dataset):
         if not is_inference:
             gt_filenames = sorted(os.listdir(self.gt_folder))
             img_prefix = 's1_'
-            gt_prefix = 'resampled_' + img_prefix if is_fusion else img_prefix
+            gt_prefix = 'nicfi_gt_'  if is_fusion else 'resampled_nicfi_gt_'
             for img_name in img_filenames:
                 gt_name = img_name.replace(img_prefix, gt_prefix)
+
                 if gt_name in gt_filenames:
                     img_path = os.path.join(self.img_folder, img_name)
                     gt_path = os.path.join(self.gt_folder, gt_name)
@@ -80,10 +81,13 @@ class Sentinel1Dataset(Dataset):
         Pads an image tensor to the target height and width with zeros.
         The padding is applied to the bottom and right edges of the image.
         """
-        _, height, width = img_tensor.shape
+        if len(img_tensor.shape) == 3:
+            _, height, width = img_tensor.shape
+        elif len(img_tensor.shape) == 2:
+            height, width = img_tensor.shape
 
         if self.is_fusion:
-            # match Planet images' dimensions
+            # match Planet images dimensions
             target_height = 384
             target_width = 384
 
@@ -99,17 +103,16 @@ class Sentinel1Dataset(Dataset):
         return img_tensor
     
     def __getitem__(self, idx):
-        img_path = self.dataset[idx]
+        if self.is_inference:
+            img_path = self.dataset[idx]
+        else:
+            img_path, gt_path = self.dataset[idx]
 
         with rasterio.open(img_path, 'r') as src:
             img = src.read().astype(np.float32) 
 
-            # handle NaN values and apply a median filter
-            img = np.nan_to_num(img, nan=np.median(img[~np.isnan(img)]))
-            img = median_filter(img, size=3)
-
             if self.to_linear:
-                # Convert from decibel to linear scale
+                # convert from decibel to linear scale
                 img = np.power(10, img / 10)
 
             if self.is_fusion and self.planet_ref_path:
@@ -135,23 +138,27 @@ class Sentinel1Dataset(Dataset):
                 )
                 img = dst_img
 
-            if self.normalization:
-                img = self.normalization(img)
+        # handle NaN values and apply a median filter
+        img = np.nan_to_num(img, nan=np.median(img[~np.isnan(img)]))
+        img = median_filter(img, size=3)
 
-            img_tensor = torch.from_numpy(img).float()
+        if self.normalization:
+            img = self.normalization(img)
+
+        img_tensor = torch.from_numpy(img).float()
 
         if not self.is_inference:
-            gt_path = os.path.join(self.gt_folder, os.path.basename(img_path).replace('s1_', 'resampled_'))
             gt = np.array(Image.open(gt_path).convert('L'), dtype=np.float32)
             gt_tensor = torch.from_numpy(gt).long()
 
             if self.pad:
-                img_tensor, gt_tensor = self.pad_to_target(img_tensor, gt_tensor)
-                
+                img_tensor  = self.pad_to_target(img_tensor)   
+                gt_tensor = self.pad_to_target(gt_tensor)  
+
             return img_tensor, gt_tensor
         
         else:
             if self.pad:
-                img_tensor = self.pad_to_target(img_tensor)
+                img_tensor  = self.pad_to_target(img_tensor)
 
             return img_tensor

@@ -23,40 +23,36 @@ class FusionDataset(Dataset):
             s1_normalization (callable, optional): Optional normalization to be applied on Sentinel-1 images.      
       Returns:
             The processed images from both datasets, and their ground truths.
-    """
-      def __init__(self, root_dir, train=True, is_inference=False, transforms=None, planet_normalization=None, s1_normalization=None):
-            # get data directories
+      """
+      def __init__(self, root_dir, train=True, is_inference=False, planet_normalization=None, s1_normalization=None):
+            self.root_dir = root_dir
+            self.train = train
+            self.is_inference = is_inference
+
+            # handle inference mode
             if is_inference:
-                  s1_data_dir = os.path.join(root_dir, 'images', 's1')
-                  planet_data_dir = os.path.join(root_dir, 'images', 'planet')
+                  planet_data_dir = os.path.join(root_dir, 'images/planet')
+                  s1_data_dir = os.path.join(root_dir, 'images/s1')
             else:
-                  s1_data_dir = os.path.join(root_dir, 'training_data' if train else 'testing_data', 'images', 's1')
-                  planet_data_dir = os.path.join(root_dir, 'training_data' if train else 'testing_data', 'images', 'planet')
+                  planet_data_dir = os.path.join(root_dir)
+                  s1_data_dir = os.path.join(root_dir)
 
-            # initialize Sentinel1Dataset and PlanetDatase
-            self.s1_dataset = Sentinel1Dataset(data_dir=s1_data_dir, 
-                                               pad=True, 
-                                               is_fusion=True, 
-                                               planet_ref_path=planet_data_dir,
-                                               normalization=s1_normalization)
-            self.planet_dataset = PlanetDataset(data_dir=planet_data_dir, 
-                                                pad=True, 
-                                                is_fusion=True,
-                                                normalization=planet_normalization)
 
-            # ensure both datasets have the same length and other initialization details here
-            assert len(self.s1_dataset) == len(self.planet_dataset), "Datasets must have the same size"
+            # initialize Planet and S1 datasets
+            self.planet_dataset = PlanetDataset(data_dir=planet_data_dir, normalization=planet_normalization,
+                                                pad=True, is_fusion=True, is_inference=is_inference)
+            self.s1_dataset = Sentinel1Dataset(data_dir=s1_data_dir, normalization=s1_normalization,
+                                                pad=True, is_fusion=True, is_inference=is_inference)
 
       def __len__(self):
-            return len(self.planet_dataset)
+            return min(len(self.planet_dataset), len(self.s1_dataset))
 
       def __getitem__(self, idx):
-            # get preprocessed image and ground truth from the Sentinel-1 dataset
-            s1_data, gt = self.s1_dataset[idx]
+            planet_data, gt = self.planet_dataset[idx] if not self.is_inference else (self.planet_dataset[idx], None)
+            s1_data, _ = self.s1_dataset[idx] if not self.is_inference else (self.s1_dataset[idx], None)
 
-            # get the preprocessed image and ground truth from the Planet dataset
-            planet_data, _ = self.planet_dataset[idx]
-
-            return planet_data, s1_data, gt
-
+            if not self.is_inference:
+                  return planet_data, s1_data, gt
+            else:
+                  return planet_data, s1_data
 
