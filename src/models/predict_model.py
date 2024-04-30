@@ -22,7 +22,7 @@ from models.lit_model_standalone import LitModelStandalone
 from models.lit_model_fusion import LitModelLateFusion
 
 from visualization.get_predictions import get_predictions
-from visualization.plot_binary_segmentation import plot_segmentation_outputs
+from visualization.plot_example_segmentation import plot_segmentation_outputs
 
 
 # set seed for reproducibility
@@ -37,7 +37,7 @@ with open('src/models/test_config.json') as f:
     config = json.load(f)
 
 mode_dict = {
-    "binary": LitModelStandalone,
+    "standalone": LitModelStandalone,
     "fusion": LitModelLateFusion
 }
 
@@ -75,7 +75,6 @@ if datasource_dict[config["datasource"]] == FusionDataset:
     planet_normalization = normalization_dict[config["planet_normalization"]]
     s1_normalization = normalization_dict[config["s1_normalization"]]
     testing_dataset = dataset(testing_dir,
-                            train=False,
                             planet_normalization=planet_normalization,
                             s1_normalization=s1_normalization)
 else:
@@ -94,10 +93,11 @@ model.freeze()
 print(model.hparams)
 
 batch_size = config["batch_size"]
+print(testing_dataset[0][1].shape)
 test_loader = DataLoader(testing_dataset, 
                          batch_size=batch_size, 
                          shuffle=False,
-                         num_workers=4)
+                         num_workers=9)
 
 
 indices = [18, 69, 222]
@@ -114,10 +114,5 @@ plot_segmentation_outputs = plot_segmentation_outputs(predictions_file,
                                                       f'{filename}_{indices}',
                                                       is_fusion=True,
                                                       is_optical=False,
-                                                      threshold=0.3,
+                                                      threshold=0.4,
                                                       original_dimensions=(375, 375))
-# plot_segmentation_outputs(predictions_file=predictions_file, 
-#                         output_name=f'fusion_predictions_{indices}',
-#                         model_type='fusion',
-#                         threshold=0.6,
-#                         original_dimensions=(375, 375))
