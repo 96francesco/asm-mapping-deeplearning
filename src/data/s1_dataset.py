@@ -47,7 +47,7 @@ class Sentinel1Dataset(Dataset):
         self.is_inference = is_inference
 
         # construct image folder paths correctly, based on the mode and fusion settting
-        if is_inference:
+        if self.is_inference:
             self.img_folder = os.path.join(data_dir)
         else:
             self.img_folder = os.path.join(data_dir, 'images/s1') if is_fusion else os.path.join(data_dir, 'images')
@@ -90,6 +90,10 @@ class Sentinel1Dataset(Dataset):
             # match Planet images dimensions
             target_height = 384
             target_width = 384
+        
+        if self.is_inference:
+            target_height = 2016 # inference is executed on larger tiles
+            target_width = 2016
 
         # calculate padding
         pad_height = target_height - height if height < target_height else 0
@@ -97,7 +101,7 @@ class Sentinel1Dataset(Dataset):
 
         # apply padding if needed
         if pad_height > 0 or pad_width > 0:
-            padding = (0, pad_width, 0, pad_height)  # pad  on the right and bottom
+            padding = (0, pad_width, 0, pad_height)  # pad on the right and bottom
             img_tensor = torch.nn.functional.pad(img_tensor, padding, "constant", 0)
 
         return img_tensor
@@ -118,7 +122,8 @@ class Sentinel1Dataset(Dataset):
             if self.is_fusion and self.planet_ref_path:
                 # resample to match Planet images' resolution
                 identifier = os.path.basename(img_path).split('_')[1]
-                planet_img_path = os.path.join(self.planet_ref_path, f'nicfi_{identifier}')
+                planet_img_path = os.path.join(self.planet_ref_path, 'images/planet', 
+                                               f'nicfi_{identifier}')
 
                 with rasterio.open(planet_img_path) as ref:
                     target_transform, target_width, target_height = ref.transform, ref.width, ref.height
