@@ -23,7 +23,7 @@ def plot_segmentation_outputs(predictions_file: str, output_name: str, is_optica
                   planet_img = (planet_img * 255).astype(np.uint8)
 
                   planet_img = planet_img[:original_height, :original_width]
-                  
+
                   # process S1 input
                   s1_img = s1_input[0][0].cpu().numpy()
                   s1_img = s1_img[:original_height, :original_width]
@@ -35,19 +35,28 @@ def plot_segmentation_outputs(predictions_file: str, output_name: str, is_optica
             else:
                   inputs, outputs, targets = predictions[i]
                   
-                  input_img = inputs[0].cpu().numpy().transpose(1, 2, 0)
                   if is_optical:
+                        input_img = inputs[0].cpu().numpy().transpose(1, 2, 0)
                         input_img = input_img[:, :, [2, 1, 0]]  # convert BGR to RGB
                         
+                        # crop to original size to remove padding
+                        input_img = input_img[:original_height, :original_width]
+
                         input_img = (input_img - input_img.min()) / (input_img.max() - input_img.min())
                         input_img = (input_img * 255).astype(np.uint8)
                         
-                        axs[i, 0].imshow(input_img, cmap=None if is_optical else 'gray')
+                        axs[i, 0].imshow(input_img, cmap=None)
                         axs[i, 0].set_title("Input Image", fontsize=20)
                   else:
                         input_img = inputs[0][0].cpu().numpy()
+
+                        # crop to original size to remove padding 
+                        input_img = input_img[:original_height, :original_width]
+
+                        axs[i, 0].imshow(input_img, cmap='gray')
+                        axs[i, 0].set_title("Input Image", fontsize=20)
                         
-                  input_img = input_img[:original_height, :original_width]
+                  
             
             # process outputs and targets
             target_img = targets[0].cpu().numpy()
@@ -68,5 +77,5 @@ def plot_segmentation_outputs(predictions_file: str, output_name: str, is_optica
                   ax.axis("off")
 
       plt.tight_layout()
-      plt.savefig(f'reports/{output_name}.png')
+      plt.savefig(f'reports/figures/{output_name}.png')
       plt.show()
