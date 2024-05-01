@@ -73,7 +73,6 @@ if datasource_dict[config["datasource"]] == FusionDataset:
     planet_normalization = normalization_dict[config["planet_normalization"]]
     s1_normalization = normalization_dict[config["s1_normalization"]]
     testing_dataset = dataset(testing_dir,
-                            train=False,
                             planet_normalization=planet_normalization,
                             s1_normalization=s1_normalization)
 else:
@@ -96,7 +95,6 @@ test_loader = DataLoader(testing_dataset,
                          batch_size=batch_size, 
                          shuffle=False,
                          num_workers=4)
-print(model.hparams)
 
 # test the model
 trainer = pl.Trainer(accelerator='gpu',
