@@ -11,6 +11,7 @@ from pytorch_lightning import seed_everything
 from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.profilers import PyTorchProfiler
 from torch.utils.data import DataLoader, random_split
+from pytorch_lightning.loggers import TensorBoardLogger
 
 # import custom modules
 from data.planet_dataset import PlanetDataset
@@ -86,7 +87,6 @@ if datasource_dict[config["datasource"]] == FusionDataset:
     planet_normalization = normalization_dict[config["planet_normalization"]]
     s1_normalization = normalization_dict[config["s1_normalization"]]
     training_dataset = dataset(training_dir,
-                            train=True,
                             planet_normalization=planet_normalization,
                             s1_normalization=s1_normalization)
 else:
@@ -126,7 +126,7 @@ unet = smp.Unet(
 
 # pre-trained checkpoints, for Late Fusion mode
 planet_checkpoint_path = 'models/checkpoints/planet-binary-optimized-trial43-epoch=59-val_f1score=0.74.ckpt'
-s1_checkpoint_path = 'models/checkpoints/s1-db-trial7-epoch=55-val_f1score=0.48.ckpt'
+s1_checkpoint_path = 'models/checkpoints/s1_new_trial7-epoch=38-val_f1score=0.46.ckpt'
 
 # define model
 if config["mode"] == "fusion":
@@ -161,7 +161,7 @@ filename = filename_prefix + "-{epoch:02d}-{val_f1score:.2f}"
 early_stop_callback = EarlyStopping(
    monitor='val_loss',
    min_delta=0.00,
-   patience=20,
+   patience=30,
    verbose=True,
    mode='min')
 
@@ -177,6 +177,9 @@ checkpoint_callback = ModelCheckpoint(
 # initialize profiler
 profiler = PyTorchProfiler()
 
+# set up logger
+logger = TensorBoardLogger("tb_logs", name=filename_prefix)
+
 # define trainer and start training
 trainer = pl.Trainer(max_epochs=config["epochs"],
                      log_every_n_steps=10,
@@ -185,10 +188,11 @@ trainer = pl.Trainer(max_epochs=config["epochs"],
                      detect_anomaly=False,
                      strategy=DDPStrategy(find_unused_parameters=True),
                      callbacks=[early_stop_callback, checkpoint_callback],
-                     profiler=profiler,
+                    #  profiler=profiler,
+                     logger=logger,
                     #  accumulate_grad_batches=4,
                     #  precision=16,
                     #  gradient_clip_val=0.5,
-                     )
-print(model.hparams)
+                    )
+# print(model.hparams)
 trainer.fit(model, train_loader, val_loader)
