@@ -1,25 +1,26 @@
 import torchmetrics
 import segmentation_models_pytorch as smp
 import torch
-import torch.nn as nn
 import pytorch_lightning as pl
 
 from torch.optim.lr_scheduler import StepLR
 
 class LitModelStandalone(pl.LightningModule):
     """
-    A LightningModule for binary classification with various loss functions and optimizers.
+    A LightningModule for binary classification with Focal loss and Adam optimizer.
     Implements forward pass, training, validation, test steps, and optimizer configuration.
     
     Attributes:
         model (torch.nn.Module): The underlying model for predictions. 
             Defaults to SMP's Unet with ResNet34 backbone if None.
-        loss (str): Loss function name ('bce', 'focal', 'iou'). Default: 'bce'.
         pos_weight (torch.Tensor, optional): A weight of positive examples for unbalanced datasets.
         weight_decay (float): Weight decay (L2 penalty) for optimizer. Default: 1e-5.
         lr (float): Learning rate for optimizer. Default: 1e-3.
         threshold (float): Threshold for binary classification. Default: 0.5.
-        optimizer (str): Optimizer name ('sgd', 'adam'). Default: 'sgd'.
+        optimizer (torch.optim.Optimizer): Optimizer class. Default: torch.optim.Adam.
+        criterion (torch.nn.Module): Loss function. Default: smp.losses.FocalLoss.
+        alpha (float): Focal loss alpha parameter. Default: 0.25.
+        gamma (float): Focal loss gamma parameter. Default: 2.0.
     
     Methods:
         forward(x): Defines the forward pass of the model.
@@ -30,20 +31,17 @@ class LitModelStandalone(pl.LightningModule):
         configure_optimizers(): Configures and returns the model's optimizers and 
             learning rate schedulers.
     """
-    def __init__(self, model=None, loss='ce', pos_weight=None, weight_decay=1e-5,
-                 lr=1e-3, threshold=0.5, optimizer='sgd', in_channels=7):
+    def __init__(self, model=None, weight_decay=1e-5,
+                 lr=1e-3, threshold=0.5, in_channels=7, alpha=0.25, gamma=2.0):
         super().__init__()
         self.weight_decay = weight_decay
         self.lr = lr
         self.threshold = threshold
+        self.alpha = alpha
+        self.gamma = gamma
+        self.optimizer = torch.optim.Adam
+        self.criterion = smp.losses.FocalLoss(alpha=alpha, gamma=gamma, mode='binary')
         self.save_hyperparameters()
-
-        if optimizer == 'sgd':
-            self.optimizer = torch.optim.SGD
-        elif optimizer == 'adam':
-            self.optimizer = torch.optim.Adam
-        else:
-            raise ValueError(f'Unkwnown optimizer')
 
         if model is None:
             # initialize 'standard' unet
@@ -59,19 +57,6 @@ class LitModelStandalone(pl.LightningModule):
             pass
         else:
             self.model = model
-
-
-        if loss == 'ce':
-            if pos_weight is not None:
-                self.criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight.to('cuda'))
-            else:
-                self.criterion = nn.BCEWithLogitsLoss()
-        elif loss == 'focal':
-            self.criterion = smp.losses.FocalLoss(alpha=0.25, gamma=2.0, mode='binary')
-        elif loss == 'iou':
-            self.criterion = smp.losses.JaccardLoss(mode='binary')
-        else:
-            raise ValueError(f'Unkwnon loss function: {loss}')
 
         # initialize accuracy metrics
         self.accuracy = torchmetrics.Accuracy(task='binary', 
@@ -148,5 +133,5 @@ class LitModelStandalone(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = self.optimizer(self.model.parameters(), lr=self.lr,
                                         weight_decay=self.weight_decay)
-        scheduler = StepLR(optimizer, step_size=5, gamma=0.25)
+        scheduler = StepLR(optimizer, step_size=10, gamma=0.8)
         return [optimizer], [scheduler]
