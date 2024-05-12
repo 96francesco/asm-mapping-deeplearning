@@ -29,12 +29,12 @@ from data.s1_dataset_normalization import linear_norm_global_percentile as s1_no
 from models.lit_model_standalone import LitModelStandalone
 from models.lit_model_fusion import LitModelLateFusion
 
-# set seed for reproducibility
-seed_everything(42, workers=True)
-
 # clear CUDA cache
 torch.cuda.empty_cache()
 gc.collect()
+
+# set seed for reproducibility
+seed_everything(42, workers=True)
 
 # read config file
 with open('src/models/train_config.json') as f:
@@ -94,24 +94,31 @@ else:
     normalization = normalization_dict[config["normalization"]]
     training_dataset = dataset(training_dir,
                             pad=True,
-                            normalization=normalization
+                            normalization=normalization,
+                            transforms=True
                             )
 
 # extract validation subset from the training set
 total_size = len(training_dataset)
-train_size = int(0.8 * total_size)
-val_size = total_size - train_size # get 20% of training set
+train_size = int(0.9 * total_size)
+val_size = total_size - train_size # get 10% of training set as validation set
 train_set, val_set = random_split(training_dataset, [train_size, val_size])
 
 # initialize dataloader
 batch_size = config["batch_size"]
-train_loader = DataLoader(train_set, batch_size=batch_size,
-                              shuffle=True, num_workers=9,
-                              persistent_workers=True, pin_memory=True,
-                              prefetch_factor=2)
-val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False,
-                            num_workers=9, persistent_workers=True, pin_memory=True,
-                            prefetch_factor=2)
+train_loader = DataLoader(train_set, 
+                        batch_size=batch_size,
+                        shuffle=True, num_workers=9,
+                        persistent_workers=True, 
+                        pin_memory=True,
+                        prefetch_factor=2)
+val_loader = DataLoader(val_set, 
+                        batch_size=batch_size,
+                        shuffle=False,
+                        num_workers=9, 
+                        persistent_workers=True, 
+                        pin_memory=True,
+                        prefetch_factor=2)
 
 # define U-Net model
 unet = smp.Unet(
@@ -146,12 +153,12 @@ else:
     model = mode_dict[config["mode"]]
     model = model(model=unet,
                 in_channels=config["in_channels"],
-                loss=config["loss"],
-                optimizer=config["optimizer"],
                 lr=config["learning_rate"],
                 threshold=config["threshold"],
                 weight_decay=config["weight_decay"],
-                pos_weight=None if config['class_weight'] == "None" else class_weight)
+                alpha=config["alpha"],
+                gamma=config["gamma"]
+    )
 
 # define filename for the checkpoints       
 filename_prefix = config["filename_prefix"]
@@ -161,7 +168,7 @@ filename = filename_prefix + "-{epoch:02d}-{val_f1score:.2f}"
 early_stop_callback = EarlyStopping(
    monitor='val_loss',
    min_delta=0.00,
-   patience=30,
+   patience=20,
    verbose=True,
    mode='min')
 
@@ -187,7 +194,8 @@ trainer = pl.Trainer(max_epochs=config["epochs"],
                      devices=2,
                      detect_anomaly=False,
                      strategy=DDPStrategy(find_unused_parameters=True),
-                     callbacks=[early_stop_callback, checkpoint_callback],
+                    #  callbacks=[early_stop_callback, checkpoint_callback],
+                    callbacks=[checkpoint_callback],
                     #  profiler=profiler,
                      logger=logger,
                     #  accumulate_grad_batches=4,
