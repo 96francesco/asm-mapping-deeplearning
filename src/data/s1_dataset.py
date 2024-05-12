@@ -2,7 +2,9 @@ import os
 import torch
 import rasterio
 import numpy as np
+import random
 
+from torchvision import transforms as T
 from scipy.ndimage import median_filter
 from torch.utils.data import Dataset
 from PIL import Image
@@ -25,6 +27,7 @@ class Sentinel1Dataset(Dataset):
                           enabling resampling to match Planet images' resolution.
         is_inference (bool): Specifies if the dataset is being used for inference.
         planet_ref_path (str, optional): Directory path to the Planet images, required if is_fusion is True.
+        to_linear (bool): Specifies if the images should be converted from decibel to linear scale.
         img_folder (str): Subdirectory within data_dir containing Sentinel-1 images.
         gt_folder (str): Subdirectory within data_dir containing the ground truth images.
         dataset (list of tuples): List where each tuple contains paths to an image and its corresponding ground truth.
@@ -34,17 +37,24 @@ class Sentinel1Dataset(Dataset):
         pad_to_target(img_tensor, target_height, target_width): Pads the image tensor to the specified dimensions.
         __getitem__(idx): Retrieves the image-ground truth pair at the specified index, applying any specified transformations
                           and resampling if used in fusion with Planet images.
+        pad_to_target(img_tensor, target_height, target_width): Pads the image tensor to the specified dimensions.
     """
-    def __init__(self, data_dir: str, pad=False, normalization=None, transforms=None, 
+    def __init__(self, data_dir: str, pad=False, normalization=None, transforms=False, 
                  is_fusion=False, planet_ref_path=None, to_linear=False, is_inference=False):
         self.data_dir = data_dir
         self.pad = pad
         self.normalization = normalization
-        self.transforms = transforms
         self.is_fusion = is_fusion
         self.planet_ref_path = planet_ref_path
         self.to_linear = to_linear
         self.is_inference = is_inference
+        self.transforms = transforms
+
+        if transforms:
+                self.transforms = T.Compose([
+                T.RandomHorizontalFlip(),
+                T.RandomVerticalFlip(),
+            ])
 
         # construct image folder paths correctly, based on the mode and fusion settting
         if self.is_inference:
@@ -92,8 +102,8 @@ class Sentinel1Dataset(Dataset):
             target_width = 384
         
         if self.is_inference:
-            target_height = 2016 # inference is executed on larger tiles
-            target_width = 2016
+            target_height = 9024 # inference is executed on larger tiles
+            target_width = 9024
 
         # calculate padding
         pad_height = target_height - height if height < target_height else 0
@@ -115,33 +125,33 @@ class Sentinel1Dataset(Dataset):
         with rasterio.open(img_path, 'r') as src:
             img = src.read().astype(np.float32) 
 
-            if self.to_linear:
-                # convert from decibel to linear scale
-                img = np.power(10, img / 10)
+        if self.to_linear:
+            # convert from decibel to linear scale
+            img = np.power(10, img / 10)
 
-            if self.is_fusion and self.planet_ref_path:
-                # resample to match Planet images' resolution
-                identifier = os.path.basename(img_path).split('_')[1]
-                planet_img_path = os.path.join(self.planet_ref_path, 'images/planet', 
-                                               f'nicfi_{identifier}')
+        if self.is_fusion and self.planet_ref_path:
+            # resample to match Planet images' resolution
+            identifier = os.path.basename(img_path).split('_')[1]
+            planet_img_path = os.path.join(self.planet_ref_path, 'images/planet', 
+                                            f'nicfi_{identifier}')
 
-                with rasterio.open(planet_img_path) as ref:
-                    target_transform, target_width, target_height = ref.transform, ref.width, ref.height
-                
-                # define the destination array for the reprojected data
-                dst_img = np.zeros((src.count, target_height, target_width), dtype=np.float32)
-                
-                # perform reprojection
-                reproject(
-                    source=img,
-                    destination=dst_img,
-                    src_transform=src.transform,
-                    src_crs=src.crs,
-                    dst_transform=target_transform,
-                    dst_crs=src.crs,
-                    resampling=Resampling.cubic
-                )
-                img = dst_img
+            with rasterio.open(planet_img_path) as ref:
+                target_transform, target_width, target_height = ref.transform, ref.width, ref.height
+            
+            # define the destination array for the reprojected data
+            dst_img = np.zeros((src.count, target_height, target_width), dtype=np.float32)
+            
+            # perform reprojection
+            reproject(
+                source=img,
+                destination=dst_img,
+                src_transform=src.transform,
+                src_crs=src.crs,
+                dst_transform=target_transform,
+                dst_crs=src.crs,
+                resampling=Resampling.cubic
+            )
+            img = dst_img
 
         # handle NaN values and apply a median filter
         img = np.nan_to_num(img, nan=np.median(img[~np.isnan(img)]))
@@ -149,12 +159,24 @@ class Sentinel1Dataset(Dataset):
 
         if self.normalization:
             img = self.normalization(img)
-
+        
         img_tensor = torch.from_numpy(img).float()
+        
+        # apply data augmentation
+        random.seed(96)
+        torch.manual_seed(69)
+        if self.transforms:
+            img_tensor = self.transforms(img_tensor)
 
         if not self.is_inference:
             gt = np.array(Image.open(gt_path).convert('L'), dtype=np.float32)
             gt_tensor = torch.from_numpy(gt).long()
+            if self.transforms:
+                        gt_tensor = gt_tensor.unsqueeze(0) # add channel dimension, necessary for transforms
+                        random.seed(96)
+                        torch.manual_seed(69)
+                        gt_tensor = self.transforms(gt_tensor)
+                        gt_tensor = gt_tensor.squeeze(0) # remove channel dimension
 
             if self.pad:
                 img_tensor  = self.pad_to_target(img_tensor)   

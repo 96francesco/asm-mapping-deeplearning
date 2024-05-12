@@ -2,7 +2,9 @@ import os
 import torch
 import rasterio
 import numpy as np
+import random
 
+from torchvision import transforms as T
 from scipy.ndimage import median_filter
 from torch.utils.data import Dataset
 from PIL import Image
@@ -34,38 +36,44 @@ class PlanetDataset(Dataset):
             __getitem__(idx): Retrieves the image-ground truth pair at the specified index, 
                   applying any specified transformations.
       """
-      def __init__(self, data_dir, pad=False, normalization=None, transforms=None, 
+      def __init__(self, data_dir, pad=False, normalization=None, transforms=False, 
                  is_fusion=False, is_inference=False):
-        self.data_dir = data_dir
-        self.pad = pad
-        self.normalization = normalization
-        self.transforms = transforms
-        self.is_fusion = is_fusion
-        self.is_inference = is_inference
+            self.data_dir = data_dir
+            self.pad = pad
+            self.normalization = normalization
+            self.transforms = transforms
+            self.is_fusion = is_fusion
+            self.is_inference = is_inference
 
-        # set the correct image folder path based on the mode
-        if is_inference:
-            self.img_folder = os.path.join(data_dir) 
-        else:
-            self.img_folder = os.path.join(data_dir, 'images/planet') if is_fusion else os.path.join(data_dir, 'images')
+            if transforms:
+                  self.transforms  = T.Compose([
+                  T.RandomHorizontalFlip(),
+                  T.RandomVerticalFlip(),
+            ])
+            
+            # set the correct image folder path based on the mode
+            if is_inference:
+                  self.img_folder = os.path.join(data_dir) 
+            else:
+                  self.img_folder = os.path.join(data_dir, 'images/planet') if is_fusion else os.path.join(data_dir, 'images')
 
-        self.gt_folder = os.path.join(data_dir, 'gt') if not is_inference else None
+            self.gt_folder = os.path.join(data_dir, 'gt') if not is_inference else None
 
-        self.dataset = []
-        img_filenames = sorted(os.listdir(self.img_folder))
+            self.dataset = []
+            img_filenames = sorted(os.listdir(self.img_folder))
 
-        if not is_inference:
-            gt_filenames = sorted(os.listdir(self.gt_folder))
-            for img_name in img_filenames:
-                gt_name = 'nicfi_gt_' + img_name.split('_')[-1]  # Assuming naming convention for GT files
-                if gt_name in gt_filenames:
-                    img_path = os.path.join(self.img_folder, img_name)
-                    gt_path = os.path.join(self.gt_folder, gt_name)
-                    self.dataset.append((img_path, gt_path))
-        else:
-            for img_name in img_filenames:
-                img_path = os.path.join(self.img_folder, img_name)
-                self.dataset.append(img_path)
+            if not is_inference:
+                  gt_filenames = sorted(os.listdir(self.gt_folder))
+                  for img_name in img_filenames:
+                        gt_name = 'nicfi_gt_' + img_name.split('_')[-1]  # naming convention for GT files
+                        if gt_name in gt_filenames:
+                              img_path = os.path.join(self.img_folder, img_name)
+                              gt_path = os.path.join(self.gt_folder, gt_name)
+                              self.dataset.append((img_path, gt_path))
+            else:
+                  for img_name in img_filenames:
+                        img_path = os.path.join(self.img_folder, img_name)
+                        self.dataset.append(img_path)
 
       @staticmethod
       def ndvi(img):
@@ -105,7 +113,7 @@ class PlanetDataset(Dataset):
                   padded_img[:, :height, :width] = img_tensor
 
             elif len(img_tensor.shape) == 2:
-                  # handle ground truth
+                  # handle ground truth images
                   height, width = img_tensor.shape
                   padded_img = torch.zeros((height + pad_height, width + pad_width))
                   padded_img[:height, :width] = img_tensor
@@ -137,23 +145,34 @@ class PlanetDataset(Dataset):
             savi = self.savi(img)
             ndwi = self.ndwi(img)
 
+            # convert image to tensor
+            img_tensor = torch.from_numpy(img).float()
+
             # apply normalization
             if self.normalization is not None:
-                  img = self.normalization(img)
-
-            # convert input image to pytorch tensor
-            img_tensor = torch.from_numpy(img).float()
+                  img_tensor = self.normalization(img_tensor)
 
             # stack NDVI as an additional channel or use it as needed
             img_tensor = torch.cat((img_tensor, ndvi, savi, ndwi), dim=0)
 
-            
+            # apply data augmentation
+            random.seed(96)
+            torch.manual_seed(69)
+            if self.transforms:
+                  img_tensor = self.transforms(img_tensor)
+
             if not self.is_inference:
                   gt = np.array(Image.open(gt_path).convert('L'), dtype=np.float32)
                   gt_tensor = torch.from_numpy(gt).long()
+                  if self.transforms:
+                        gt_tensor = gt_tensor.unsqueeze(0) # add channel dimension, necessary for transforms
+                        random.seed(96)
+                        torch.manual_seed(69)
+                        gt_tensor = self.transforms(gt_tensor)
+                        gt_tensor = gt_tensor.squeeze(0) # remove channel dimension
                   
                   if self.pad:
-                        target_height = 384  #
+                        target_height = 384  # closest multiple of 32
                         target_width = 384
 
                         pad_height = (target_height - img_tensor.shape[1] % target_height) % target_height
@@ -169,8 +188,8 @@ class PlanetDataset(Dataset):
             else:
                   # apply padding
                   if self.pad:
-                        target_height = 384 
-                        target_width = 384
+                        target_height = 9024 # inference is executd on larger tiles
+                        target_width = 9024
 
                         pad_height = (target_height - img_tensor.shape[1] % target_height) % target_height
                         pad_width = (target_width - img_tensor.shape[2] % target_width) % target_width
