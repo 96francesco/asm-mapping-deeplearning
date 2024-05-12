@@ -7,6 +7,7 @@ import gc
 
 from torch.utils.data import DataLoader, random_split
 from pytorch_lightning.strategies import DDPStrategy
+from pytorch_lightning import seed_everything
 from optuna.samplers import TPESampler
 from optuna.pruners import MedianPruner
 
@@ -25,28 +26,20 @@ from data.s1_dataset_normalization import linear_norm_global_percentile as s1_no
 from models.lit_model_standalone import LitModelStandalone
 
 def objective(trial):
+        # set seed for reproducibility
+        seed_everything(42, workers=True)
+
         # parameters to optimize
-        loss_function = trial.suggest_categorical('loss', ['iou', 'ce', 'focal'])
         weight_decay = trial.suggest_float('weight_decay', 1e-10, 1e-3, log=True)
         batch_size = trial.suggest_categorical('batch_size', [8, 16, 32])
-        optimizer = trial.suggest_categorical('optimizer', ['adam', 'sgd'])
         lr = trial.suggest_float("lr", 1e-5, 1e-1, log=True)
         threshold = trial.suggest_float("threshold", 0.3, 0.7, step=0.05)
+        alpha = trial.suggest_float("alpha", 0.05, 0.75, step=0.05)
+        gamma = trial.suggest_float("gamma", 0, 5.0, step=1.0)
         normalization = trial.suggest_categorical('normalization', 
                                                   ['minmax', 'percentile', 'standardization'])
         
-        if loss_function == 'ce':
-            # class weights are applied only in CE loss
-            class_weight = trial.suggest_categorical('pos_weight', [None, 'weights'])
-        else:
-            class_weight = None
-        
-        if class_weight == 'weights':
-            # create class weights for the positive class
-            # the pixel count was carried out previously on the GT dataset
-            class_weight = torch.tensor([133822248 / 4196568])
-                                   
-        # select normalization function
+        # select normalization function (Planet)
         if normalization == 'minmax':
             normalization_function = s1_norm_minmax
         elif normalization == 'percentile':
@@ -54,22 +47,29 @@ def objective(trial):
         elif normalization == 'standardization':    
             normalization_function = s1_standardization
 
+        # select normalization function (Sentinel-1)
+        # if normalization == 'minmax':
+        #     normalization_function = planet_norm_minmax
+        # elif normalization == 'percentile':
+        #     normalization_function = planet_norm_percentile
+        # elif normalization == 'standardization':    
+        #     normalization_function = planet_standardization
+
         # initialize sample dataset
-        training_dir = '/mnt/guanabana/raid/home/pasan001/asm-mapping-deeplearning/data/asm_dataset_split_0/s1/training_data'
-
-
+        training_dir = '/mnt/guanabana/raid/home/pasan001/asm-mapping-deeplearning/data/split_0/s1/training_data'
         # training_dataset = PlanetDataset(training_dir,
         #                                 pad=True,
-        #                                 normalization=normalization_function)
-
+        #                                 normalization=normalization_function,
+        #                                 transforms=True)
         training_dataset = Sentinel1Dataset(training_dir,
                                             pad=True,
                                             normalization=normalization_function,
-                                            to_linear=False)
+                                            to_linear=False,
+                                            transforms=True)
 
         # extract validation subset from the training set
         total_size = len(training_dataset)
-        train_size = int(0.8 * total_size)
+        train_size = int(0.9 * total_size)
         val_size = total_size - train_size
         train_set, val_set = random_split(training_dataset, [train_size, val_size])
 
@@ -84,25 +84,25 @@ def objective(trial):
                                 prefetch_factor=2)
 
         # initialize model instance
+        n_channels = 2 # 7 for Planet imagery, 2 for Sentinel-1
+
         unet = smp.Unet(
         encoder_name="resnet34",
         decoder_use_batchnorm=True,
         decoder_attention_type='scse',
         encoder_weights=None,
-        in_channels=2,
+        in_channels=n_channels, 
         classes=1,
         activation=None
         )
 
         epochs = 50
-
         model = LitModelStandalone(model=unet, 
-                                loss=loss_function, 
                                 weight_decay=weight_decay,
-                                optimizer=optimizer, 
                                 lr=lr,
-                                pos_weight=class_weight,
-                                threshold=threshold)
+                                threshold=threshold,
+                                alpha=alpha,
+                                gamma=gamma)
 
         # define trainer
         trainer = pl.Trainer(max_epochs=epochs,
@@ -137,9 +137,8 @@ study = optuna.create_study(directions=['minimize', 'maximize'],
                             sampler=TPESampler(seed=42),
                             pruner=pruner,
                             storage=storage,
-                            study_name='s1_db',
+                            study_name='s1_resnet34',
                             load_if_exists=True)
 
-
 # start study
-study.optimize(objective, n_trials=50, gc_after_trial=True)
+study.optimize(objective, n_trials=10, gc_after_trial=True)
