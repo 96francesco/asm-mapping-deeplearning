@@ -79,7 +79,8 @@ else:
     normalization = normalization_dict[config["normalization"]]
     testing_dataset = dataset(testing_dir,
                             pad=True,
-                            normalization=normalization)
+                            normalization=normalization,
+                            transforms=False)
 
 # load the checkpoint
 model = mode_dict[config["mode"]]
