@@ -1,6 +1,5 @@
 import os
 
-from torchvision import transforms
 from torch.utils.data import Dataset
 
 # import custom modules
@@ -38,9 +37,9 @@ class FusionDataset(Dataset):
 
             # initialize Planet and S1 datasets
             self.planet_dataset = PlanetDataset(data_dir=planet_data_dir, normalization=planet_normalization,
-                                                pad=True, is_fusion=True, is_inference=is_inference)
+                                                pad=True, is_fusion=True, is_inference=is_inference, transforms=True)
             self.s1_dataset = Sentinel1Dataset(data_dir=s1_data_dir, normalization=s1_normalization,
-                                                pad=True, is_fusion=True, is_inference=is_inference,
+                                                pad=True, is_fusion=True, is_inference=is_inference, transforms=True,
                                                 planet_ref_path=planet_data_dir)
 
       def __len__(self):
