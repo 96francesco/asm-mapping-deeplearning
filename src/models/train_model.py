@@ -71,12 +71,13 @@ elif datasource_dict[config["datasource"]] == FusionDataset:
     print('Initializing Fusion normalization functions')
     normalization_dict = {
     "planet_minmax": planet_norm_minmax,
+    "planet_percentile": planet_norm_percentile,
+    "planet_standardization": planet_standardization,
     "s1_standardization": s1_standardization,
+    "s1_minmax": s1_norm_minmax,
+    "s1_percentile": s1_norm_percentile
 }
     dataset = FusionDataset
-
-# create class weights
-class_weight = torch.tensor([133822248 / 4196568])
 
 # create training dataset
 training_dir = config["training_dir"]
@@ -120,37 +121,34 @@ val_loader = DataLoader(val_set,
                         pin_memory=True,
                         prefetch_factor=2)
 
-# define U-Net model
-unet = smp.Unet(
-    encoder_name="resnet34",
-    decoder_use_batchnorm=True,
-    decoder_attention_type='scse',
-    encoder_weights=None,
-    in_channels=config["in_channels"],
-    classes=config["number_of_classes"],
-    activation=None
-)
-
 # pre-trained checkpoints, for Late Fusion mode
 planet_checkpoint_path = 'models/checkpoints/planet-binary-optimized-trial43-epoch=59-val_f1score=0.74.ckpt'
-s1_checkpoint_path = 'models/checkpoints/s1_new_trial7-epoch=38-val_f1score=0.46.ckpt'
+s1_checkpoint_path = 'models/checkpoints/planet_trial10_resnet34-epoch=98-val_f1score=0.79.ckpt'
 
 # define model
 if config["mode"] == "fusion":
     print('Initializing fusion model')
     model = LitModelLateFusion(
-        fusion_loss=config["loss"],
         lr=config["learning_rate"],
         threshold=config["threshold"],
-        optimizer=config["optimizer"],
         weight_decay=config["weight_decay"],
-        pos_weight=None if config['class_weight'] == "None" else class_weight,
+        pretrained_streams=True,
         s1_checkpoint=s1_checkpoint_path,
         planet_checkpoint=planet_checkpoint_path
     )
 else:
     print('Initializing standalone model')
     model = mode_dict[config["mode"]]
+    # define U-Net model
+    unet = smp.Unet(
+        encoder_name="resnet34",
+        decoder_use_batchnorm=True,
+        decoder_attention_type='scse',
+        encoder_weights=None,
+        in_channels=config["in_channels"],
+        classes=1, # 1 for binary classification
+        activation=None
+    )
     model = model(model=unet,
                 in_channels=config["in_channels"],
                 lr=config["learning_rate"],
@@ -202,5 +200,5 @@ trainer = pl.Trainer(max_epochs=config["epochs"],
                     #  precision=16,
                     #  gradient_clip_val=0.5,
                     )
-# print(model.hparams)
+# print(model)
 trainer.fit(model, train_loader, val_loader)
