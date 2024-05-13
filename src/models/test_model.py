@@ -62,7 +62,11 @@ elif datasource_dict[config["datasource"]] == Sentinel1Dataset:
 elif datasource_dict[config["datasource"]] == FusionDataset:
     normalization_dict = {
     "planet_minmax": planet_norm_minmax,
+    "planet_percentile": planet_norm_percentile,
+    "planet_standardization": planet_standardization,
     "s1_standardization": s1_standardization,
+    "s1_minmax": s1_norm_minmax,
+    "s1_percentile": s1_norm_percentile
 }
     dataset = FusionDataset
 
