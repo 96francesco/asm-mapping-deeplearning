@@ -10,33 +10,34 @@ from torch.optim.lr_scheduler import StepLR
 
 class LitModelLateFusion(pl.LightningModule):
       """
-      A PyTorch Lightning module for late fusion of models trained on different data streams.
-      Specifically designed for fusing models trained separately on Sentinel-1 and Planet satellite
-      image data. Supports various loss functions and optimizers for training the fused model.
+      A PyTorch Lightning module for a Late Fusion U-Net. This model fuses features from 
+      two input streams via a concatenation operation after the encoder stage, and then sends
+      the combined features to the decoder.
 
       Attributes:
-            s1_model (torch.nn.Module): stream for processing Sentinel-1 satellite images.
-            planet_model (torch.nn.Module): stream for processing Planet satellite images.
-            fusion_conv (torch.nn.Conv2d): Convolutional layer to fuse features from s1_model and planet_model.
-            s1_loss (torch.nn.modules.loss._Loss): Loss function used for training the s1_model.
-            planet_loss (torch.nn.modules.loss._Loss): Loss function used for training the planet_model.
-            fusion_criterion (torch.nn.modules.loss._Loss): Loss function used for the fused output.
+            lr (float): Learning rate for the optimizer.
+            weight_decay (float): Weight decay for the optimizer.
+            alpha (float): Alpha parameter for the Focal Loss function.
+            gamma (float): Gamma parameter for the Focal Loss function.
+            pretrained_streams (bool): Whether to use pretrained streams for the model.
+            planet_checkpoint (str): Path to the checkpoint for the Planet stream model.
+            s1_checkpoint (str): Path to the checkpoint for the Sentinel-1 stream model.
             accuracy (torchmetrics.Accuracy): Metric for calculating the accuracy of predictions.
             precision (torchmetrics.Precision): Metric for calculating the precision of predictions.
             recall (torchmetrics.Recall): Metric for calculating the recall of predictions.
             f1_score (torchmetrics.F1Score): Metric for calculating the F1 score of predictions.
             threshold (float): Threshold value for converting logits to binary outputs.
-            optimizer (torch.optim.Optimizer): Optimizer used for training the model.
+            planet_in_channels (int): Number of input channels for the Planet stream model.
+            s1_in_channels (int): Number of input channels for the Sentinel-1 stream model.
       
       Methods:
             forward(planet_input, s1_input): Defines the forward pass of the module by fusing features from
-                  both input streams and applying the fusion_conv layer.
+                  both input streams.
             training_step(batch, batch_idx): Processes a single batch during training.
             validation_step(batch, batch_idx): Processes a single batch during validation.
             test_step(batch, batch_idx): Processes a single batch during testing, calculates and logs metrics.
             configure_optimizers(): Configures and returns the model's optimizers and learning rate schedulers.
-            load_model_from_checkpoint(checkpoint_path, in_channels): Utility method for loading a model
-                  from a specified checkpoint.
+            _load_encoder(checkpoint_path, in_channels): Loads the encoder from a given checkpoint path.
       """
       def __init__(self, pretrained_streams=False,
                   planet_checkpoint=None, s1_checkpoint=None,
@@ -65,7 +66,7 @@ class LitModelLateFusion(pl.LightningModule):
                                                              in_channels=s1_in_channels)
                   self.planet_encoder = smp.encoders.get_encoder('resnet34',
                                                                   in_channels=planet_in_channels)
-
+            
             # setup decoder and segmentation head
             encoder_channels = [128, 128, 256, 512, 1024]
             decoder_channels=[1024, 512, 256, 128, 128]
@@ -104,9 +105,9 @@ class LitModelLateFusion(pl.LightningModule):
             s1_features = self.s1_encoder(s1_input)
             planet_features = self.planet_encoder(planet_input)
 
-            # combine features, skipping the first feature map (initial channel size)
+            # # combine features, skipping the first feature map (initial channel size)
             combined_features = [torch.cat([s1, planet], dim=1) for s1, planet in zip(s1_features[1:], planet_features[1:])] 
-
+            
             # send combined feature to decoder
             x = self.decoder(*combined_features)
             x = self.segmentation_head(x)
