@@ -64,7 +64,11 @@ elif datasource_dict[config["datasource"]] == Sentinel1Dataset:
 elif datasource_dict[config["datasource"]] == FusionDataset:
     normalization_dict = {
     "planet_minmax": planet_norm_minmax,
+    "planet_percentile": planet_norm_percentile,
+    "planet_standardization": planet_standardization,
     "s1_standardization": s1_standardization,
+    "s1_minmax": s1_norm_minmax,
+    "s1_percentile": s1_norm_percentile
 }
     dataset = FusionDataset
 
@@ -81,7 +85,8 @@ else:
     normalization = normalization_dict[config["normalization"]]
     testing_dataset = dataset(testing_dir,
                             pad=True,
-                            normalization=normalization)
+                            normalization=normalization,
+                            transforms=False)
 
 # load the checkpoint
 model = mode_dict[config["mode"]]
@@ -100,7 +105,7 @@ test_loader = DataLoader(testing_dataset,
                          num_workers=9)
 
 
-indices = [18, 69, 222]
+indices = [18, 69, 200]
 filename = config['checkpoint_name']
 print(filename)
 get_predictions(model, 
@@ -115,4 +120,4 @@ plot_segmentation_outputs = plot_segmentation_outputs(predictions_file,
                                                       is_fusion=True,
                                                       is_optical=False,
                                                       threshold=0.4,
-                                                      original_dimensions=(375, 375))
+                                                      original_dimensions=(384, 384))
