@@ -21,7 +21,8 @@ from data.s1_dataset_normalization import linear_norm_global_minmax as s1_norm_m
 from data.s1_dataset_normalization import linear_norm_global_percentile as s1_norm_percentile
 
 from models.lit_model_standalone import LitModelStandalone
-from models.lit_model_fusion import LitModelLateFusion
+from models.lit_model_lf import LitModelLateFusion
+from models.lit_model_ef import LitModelEarlyFusion
 
 # set seed for reproducibility
 seed_everything(42, workers=True)
@@ -36,7 +37,8 @@ with open('src/models/test_config.json') as f:
 
 mode_dict = {
     "standalone": LitModelStandalone,
-    "fusion": LitModelLateFusion
+    "late_fusion": LitModelLateFusion,
+    "early_fusion": LitModelEarlyFusion
 }
 
 datasource_dict = {

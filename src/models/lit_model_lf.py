@@ -3,7 +3,6 @@ import torch
 import torch.nn as nn
 import segmentation_models_pytorch as smp
 import torchmetrics
-import torch.nn.functional as F
 
 from segmentation_models_pytorch.decoders.unet.decoder import UnetDecoder
 from torch.optim.lr_scheduler import StepLR
@@ -68,8 +67,8 @@ class LitModelLateFusion(pl.LightningModule):
                                                                   in_channels=planet_in_channels)
             
             # setup decoder and segmentation head
-            encoder_channels = [128, 128, 256, 512, 1024]
-            decoder_channels=[1024, 512, 256, 128, 128]
+            encoder_channels = [64, 64, 128, 256, 512]
+            decoder_channels = [512, 256, 128, 64, 64]
             self.decoder = UnetDecoder(
                   encoder_channels=encoder_channels,
                   decoder_channels=decoder_channels,
@@ -86,28 +85,32 @@ class LitModelLateFusion(pl.LightningModule):
                   nn.Upsample(size=(384, 384), mode='bilinear', align_corners=True)
             )
 
-            # define metrics to compute
-            self.accuracy = torchmetrics.Accuracy(task='binary', 
-                                              average='macro',
-                                              threshold=self.threshold)
-            self.precision = torchmetrics.Precision(task='binary', 
-                                                      average='macro',
-                                                      threshold=self.threshold)
-            self.recall = torchmetrics.Recall(task='binary', 
-                                                average='macro',
-                                                threshold=self.threshold)
-            self.f1_score = torchmetrics.F1Score(task='binary', 
-                                                average='macro',
-                                                threshold=self.threshold)
+            # initialize class-wise metrics to compute
+            self.accuracy_class = torchmetrics.Accuracy(task='multiclass',
+                                                      average='none',
+                                                      threshold=self.threshold,
+                                                      num_classes=2)
+            self.precision_class = torchmetrics.Precision(task='multiclass',
+                                                      average='none',
+                                                      threshold=self.threshold,
+                                                      num_classes=2)
+            self.recall_class = torchmetrics.Recall(task='multiclass',
+                                                average='none',
+                                                threshold=self.threshold,
+                                                num_classes=2)
+            self.f1_score_class = torchmetrics.F1Score(task='multiclass',
+                                                average='none',
+                                                threshold=self.threshold,
+                                                num_classes=2)
 
       def forward(self, planet_input, s1_input):
             # extract features from both encoders
             s1_features = self.s1_encoder(s1_input)
             planet_features = self.planet_encoder(planet_input)
 
-            # # combine features, skipping the first feature map (initial channel size)
-            combined_features = [torch.cat([s1, planet], dim=1) for s1, planet in zip(s1_features[1:], planet_features[1:])] 
-            
+            # combine features via summation, skipping the first feature map (initial channel size)
+            combined_features = [s1 + planet for s1, planet in zip(s1_features[1:], planet_features[1:])] 
+
             # send combined feature to decoder
             x = self.decoder(*combined_features)
             x = self.segmentation_head(x)
@@ -125,12 +128,16 @@ class LitModelLateFusion(pl.LightningModule):
       def validation_step(self, batch, batch_idx):
             planet_input, s1_input, labels = batch
             labels = labels.unsqueeze(1).type_as(s1_input)
-            outputs = self(planet_input, s1_input)
-            loss = self.criterion(outputs, labels)
-            self.log("val_loss", loss, prog_bar=True, on_step=False,
-                on_epoch=True, sync_dist=True)
-            self.log('val_f1score', self.f1_score(outputs, labels),
-                        prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
+            logits = self.forward(planet_input, s1_input)
+            loss = self.criterion(logits, labels)
+            probs = torch.sigmoid(logits) # convert logits to probabilities
+            preds = (probs > self.threshold).float() # apply threshold to probrabilities
+            f1_score_class = self.f1_score_class(preds.squeeze(1), labels.squeeze(1))
+            self.log("val_loss", loss, prog_bar=True, on_step=False, 
+                     on_epoch=True, sync_dist=True)
+            self.log('val_f1score', f1_score_class[1], 
+                     prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
+            
             return loss
       
       def test_step(self, batch, batch_idx):
@@ -140,13 +147,35 @@ class LitModelLateFusion(pl.LightningModule):
             loss = self.criterion(logits, labels)
             probs = torch.sigmoid(logits) # convert logits to probabilities
             preds = (probs > self.threshold).float() # apply threshold to probrabilities
-            
-            # compute and log accuracy metrics
-            acc = self.accuracy(probs.squeeze(), labels.squeeze().long())
-            self.log('test_accuracy', acc, sync_dist=True)
-            self.log('test_precision', self.precision(preds, labels), sync_dist=True)
-            self.log('test_recall', self.recall(preds, labels), sync_dist=True)
-            self.log('test_f1score', self.f1_score(preds, labels), sync_dist=True)
+
+            # compute class-wise metrics
+            accuracy_class = self.accuracy_class(preds.squeeze(1), labels.squeeze(1))
+            precision_class = self.precision_class(preds.squeeze(1), labels.squeeze(1))
+            recall_class = self.recall_class(preds.squeeze(1), labels.squeeze(1))
+            f1_score_class = self.f1_score_class(preds.squeeze(1), labels.squeeze(1))
+
+            # manually calculate macro metrics
+            accuracy_macro_manual = accuracy_class.mean()
+            precision_macro_manual = precision_class.mean()
+            recall_macro_manual = recall_class.mean()
+            f1_score_macro_manual = f1_score_class.mean()
+
+            # log metrics
+            self.log('test_accuracy_macro_manual', accuracy_macro_manual, sync_dist=True)
+            self.log('test_accuracy_class0', accuracy_class[0], sync_dist=True)
+            self.log('test_accuracy_class1', accuracy_class[1], sync_dist=True)
+
+            self.log('test_precision_macro_manual', precision_macro_manual, sync_dist=True)
+            self.log('test_precision_class0', precision_class[0], sync_dist=True)
+            self.log('test_precision_class1', precision_class[1], sync_dist=True)
+
+            self.log('test_recall_macro_manual', recall_macro_manual, sync_dist=True)
+            self.log('test_recall_class0', recall_class[0], sync_dist=True)
+            self.log('test_recall_class1', recall_class[1], sync_dist=True)
+
+            self.log('test_f1score_macro_manual', f1_score_macro_manual, sync_dist=True)
+            self.log('test_f1score_class0', f1_score_class[0], sync_dist=True)
+            self.log('test_f1score_class1', f1_score_class[1], sync_dist=True)
 
             return loss
 

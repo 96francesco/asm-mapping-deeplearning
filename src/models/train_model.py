@@ -27,7 +27,8 @@ from data.s1_dataset_normalization import linear_norm_global_minmax as s1_norm_m
 from data.s1_dataset_normalization import linear_norm_global_percentile as s1_norm_percentile
 
 from models.lit_model_standalone import LitModelStandalone
-from models.lit_model_fusion import LitModelLateFusion
+from models.lit_model_lf import LitModelLateFusion
+from models.lit_model_ef import LitModelEarlyFusion
 
 # clear CUDA cache
 torch.cuda.empty_cache()
@@ -42,7 +43,8 @@ with open('src/models/train_config.json') as f:
 
 mode_dict = {
     "standalone": LitModelStandalone,
-    "fusion": LitModelLateFusion
+    "late_fusion": LitModelLateFusion,
+    "early_fusion": LitModelEarlyFusion
 }
 
 datasource_dict = {
@@ -122,12 +124,12 @@ val_loader = DataLoader(val_set,
                         prefetch_factor=2)
 
 # pre-trained checkpoints, for Late Fusion mode
-planet_checkpoint_path = 'models/checkpoints/planet-binary-optimized-trial43-epoch=59-val_f1score=0.74.ckpt'
-s1_checkpoint_path = 'models/checkpoints/planet_trial10_resnet34-epoch=98-val_f1score=0.79.ckpt'
+planet_checkpoint_path = 'models/checkpoints/planet_trial10_resnet34-epoch=98-val_f1score=0.79.ckpt'
+s1_checkpoint_path = 'models/checkpoints/s1_trial51-epoch=99-val_f1score=0.67.ckpt'
 
 # define model
-if config["mode"] == "fusion":
-    print('Initializing fusion model')
+if config["mode"] == "late_fusion":
+    print('Initializing Late Fusion model')
     model = LitModelLateFusion(
         lr=config["learning_rate"],
         threshold=config["threshold"],
@@ -135,6 +137,15 @@ if config["mode"] == "fusion":
         pretrained_streams=True,
         s1_checkpoint=s1_checkpoint_path,
         planet_checkpoint=planet_checkpoint_path
+    )
+elif config["mode"] == "early_fusion":
+    print('Initializing Early Fusion model')
+    model = LitModelEarlyFusion(
+        lr=config["learning_rate"],
+        threshold=config["threshold"],
+        weight_decay=config["weight_decay"],
+        alpha=config["alpha"],
+        gamma=config["gamma"]
     )
 else:
     print('Initializing standalone model')
@@ -176,7 +187,8 @@ checkpoint_callback = ModelCheckpoint(
     save_top_k=3,
     verbose=False,
     monitor='val_f1score',
-    mode='max'
+    mode='max',
+    save_last=False
 )
 
 # initialize profiler
@@ -202,3 +214,6 @@ trainer = pl.Trainer(max_epochs=config["epochs"],
                     )
 # print(model)
 trainer.fit(model, train_loader, val_loader)
+
+# save model
+# torch.save(model.state_dict(), 'models/' + filename_prefix + '.pth')
