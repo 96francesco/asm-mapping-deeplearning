@@ -188,8 +188,8 @@ class PlanetDataset(Dataset):
             else:
                   # apply padding
                   if self.pad:
-                        target_height = 9024 # inference is executd on larger tiles
-                        target_width = 9024
+                        target_height = 1024 # inference is executd on larger tiles
+                        target_width = 1024
 
                         pad_height = (target_height - img_tensor.shape[1] % target_height) % target_height
                         pad_width = (target_width - img_tensor.shape[2] % target_width) % target_width

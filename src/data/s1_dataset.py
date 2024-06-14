@@ -102,8 +102,8 @@ class Sentinel1Dataset(Dataset):
             target_width = 384
         
         if self.is_inference:
-            target_height = 9024 # inference is executed on larger tiles
-            target_width = 9024
+            target_height = 1024 # inference is executed on larger tiles
+            target_width = 1024
 
         # calculate padding
         pad_height = target_height - height if height < target_height else 0
@@ -129,7 +129,7 @@ class Sentinel1Dataset(Dataset):
             # convert from decibel to linear scale
             img = np.power(10, img / 10)
 
-        if self.is_fusion and self.planet_ref_path:
+        if self.is_fusion and self.planet_ref_path and not self.is_inference:
             # resample to match Planet images' resolution
             identifier = os.path.basename(img_path).split('_')[1]
             planet_img_path = os.path.join(self.planet_ref_path, 'images/planet', 
