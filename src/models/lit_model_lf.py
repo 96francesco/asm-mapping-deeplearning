@@ -42,7 +42,7 @@ class LitModelLateFusion(pl.LightningModule):
                   planet_checkpoint=None, s1_checkpoint=None,
                   s1_in_channels=2, planet_in_channels=7,
                   lr=1e-3, threshold=0.5, weight_decay=1e-5, 
-                  alpha=0.25, gamma=2.0):
+                  alpha=0.25, gamma=2.0, is_inference=False):
             super().__init__()
             self.lr = lr
             self.threshold = threshold
@@ -67,8 +67,10 @@ class LitModelLateFusion(pl.LightningModule):
                                                                   in_channels=planet_in_channels)
             
             # setup decoder and segmentation head
-            encoder_channels = [64, 64, 128, 256, 512]
-            decoder_channels = [512, 256, 128, 64, 64]
+            # encoder_channels = [64, 64, 128, 256, 512]
+            # decoder_channels = [512, 256, 128, 64, 64]
+            encoder_channels = [128, 128, 256, 512, 1024]
+            decoder_channels=[1024, 512, 256, 128, 128]
             self.decoder = UnetDecoder(
                   encoder_channels=encoder_channels,
                   decoder_channels=decoder_channels,
@@ -77,12 +79,17 @@ class LitModelLateFusion(pl.LightningModule):
                   attention_type='scse',
                   center=False
             )
+
+            if is_inference:
+                  size = (1024, 1024)
+            else:
+                  size = (384, 384)
             self.segmentation_head = nn.Sequential(
                   nn.Conv2d(decoder_channels[-1], 1, kernel_size=1),
                   
                   # this upsampling is crucial to match the shape of the original input
                   # this LF model is not able to upscale the input to the original size automatically
-                  nn.Upsample(size=(384, 384), mode='bilinear', align_corners=True)
+                  nn.Upsample(size=size, mode='bilinear', align_corners=True)
             )
 
             # initialize class-wise metrics to compute
@@ -109,7 +116,8 @@ class LitModelLateFusion(pl.LightningModule):
             planet_features = self.planet_encoder(planet_input)
 
             # combine features via summation, skipping the first feature map (initial channel size)
-            combined_features = [s1 + planet for s1, planet in zip(s1_features[1:], planet_features[1:])] 
+            # combined_features = [s1 + planet for s1, planet in zip(s1_features[1:], planet_features[1:])] 
+            combined_features = [torch.cat([s1, planet], dim=1) for s1, planet in zip(s1_features[1:], planet_features[1:])] 
 
             # send combined feature to decoder
             x = self.decoder(*combined_features)
