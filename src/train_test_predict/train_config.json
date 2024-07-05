@@ -1,0 +1,20 @@
+{     
+      "datasource": "fusion",
+      "training_dir": "/mnt/guanabana/raid/home/pasan001/asm-mapping-deeplearning/data/split_0/fusion/training_data",
+      "normalization": "percentile",
+      "planet_normalization": "planet_percentile",
+      "s1_normalization": "s1_percentile",
+
+      "mode": "late_fusion",
+      "in_channels": 7,
+      "batch_size": 16,
+      "learning_rate": 0.00016536937182824412,
+      "weight_decay":  2.853390105240223e-10
+      ,
+      "threshold": 0.3,
+      "epochs": 100,
+      "alpha": 0.55,
+      "gamma": 2.0,
+
+      "filename_prefix": "full_model"
+}

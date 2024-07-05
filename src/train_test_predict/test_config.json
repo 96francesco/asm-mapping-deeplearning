@@ -1,0 +1,12 @@
+{     
+      "datasource": "fusion",
+      "testing_dir": "/mnt/guanabana/raid/home/pasan001/asm-mapping-deeplearning/data/split_0/fusion/testing_data",
+      "normalization": "percentile",
+      "planet_normalization": "planet_percentile",
+      "s1_normalization": "s1_percentile",
+      "checkpoint": "models/checkpoints/fusion_pretrained_trial11-epoch=43-val_f1score=0.84.ckpt",
+      "checkpoint_name": "late_fusion_checkpoint",
+
+      "mode": "late_fusion",
+      "batch_size": 16
+}
