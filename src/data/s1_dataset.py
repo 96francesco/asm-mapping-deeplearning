@@ -16,37 +16,37 @@ class Sentinel1Dataset(Dataset):
     A dataset class for Sentinel-1 satellite images, designed for use in deep learning models. 
     This class supports operations like resampling to match Planet satellite image resolutions, padding, 
     normalization, and data augmentation. It can be used standalone or in fusion with Planet satellite 
-    images for tasks like semantic segmentation or classification.
+    images for ASM segmentation.
 
     Attributes:
         data_dir (str): Path to the directory containing Sentinel-1 image and ground truth data.
         pad (bool): Indicates whether to pad images to a fixed size.
-        normalization (callable, optional): A function to normalize image data.
+        normalization (bool): Specifies if normalization should be applied to the images.
         transforms (callable, optional): Augmentation transforms to be applied to the images.
         is_fusion (bool): Specifies if the dataset is being used in fusion with Planet images,
                           enabling resampling to match Planet images' resolution.
         is_inference (bool): Specifies if the dataset is being used for inference.
         planet_ref_path (str, optional): Directory path to the Planet images, required if is_fusion is True.
-        to_linear (bool): Specifies if the images should be converted from decibel to linear scale.
         img_folder (str): Subdirectory within data_dir containing Sentinel-1 images.
         gt_folder (str): Subdirectory within data_dir containing the ground truth images.
         dataset (list of tuples): List where each tuple contains paths to an image and its corresponding ground truth.
 
     Methods:
+        vv_vh(img): Calculates the ratio (difference in DB scale) between the VV and VH bands 
+                    of a Sentinel-1 image.
         __len__(): Returns the number of image-ground truth pairs in the dataset.
         pad_to_target(img_tensor, target_height, target_width): Pads the image tensor to the specified dimensions.
         __getitem__(idx): Retrieves the image-ground truth pair at the specified index, applying any specified transformations
                           and resampling if used in fusion with Planet images.
         pad_to_target(img_tensor, target_height, target_width): Pads the image tensor to the specified dimensions.
     """
-    def __init__(self, data_dir: str, pad=False, normalization=None, transforms=False, 
-                 is_fusion=False, planet_ref_path=None, to_linear=False, is_inference=False):
+    def __init__(self, data_dir: str, pad=False, normalization=False, transforms=False, 
+                 is_fusion=False, planet_ref_path=None, is_inference=False):
         self.data_dir = data_dir
         self.pad = pad
         self.normalization = normalization
         self.is_fusion = is_fusion
         self.planet_ref_path = planet_ref_path
-        self.to_linear = to_linear
         self.is_inference = is_inference
         self.transforms = transforms
 
@@ -82,6 +82,30 @@ class Sentinel1Dataset(Dataset):
             for img_name in img_filenames:
                 img_path = os.path.join(self.img_folder, img_name)
                 self.dataset.append(img_path)
+    
+    @staticmethod
+    def vv_vh(img):
+        """
+        Calculates the ratio between the VV and VH bands of a Sentinel-1 image.
+        """
+        vv = img[0]
+        vh = img[1]
+        diff = vv - vh
+        
+        # convert to tensor and add channel dimension
+        diff = torch.from_numpy(diff).unsqueeze(0)
+        return diff
+
+    @staticmethod
+    def normalize_percentile(image, 
+                            lower_percentile=-12.381244628070895,
+                            upper_percentile=--3.7340425864436555):
+        """
+        Normalize iamge between the global 2nd and 98th percentiles.
+        These values were previously calculated from the training dataset.
+        """
+        return (image - lower_percentile) / (upper_percentile - lower_percentile)
+        
 
     def __len__(self):
         return len(self.dataset)
@@ -125,10 +149,6 @@ class Sentinel1Dataset(Dataset):
         with rasterio.open(img_path, 'r') as src:
             img = src.read().astype(np.float32) 
 
-        if self.to_linear:
-            # convert from decibel to linear scale
-            img = np.power(10, img / 10)
-
         if self.is_fusion and self.planet_ref_path and not self.is_inference:
             # resample to match Planet images' resolution
             identifier = os.path.basename(img_path).split('_')[1]
@@ -157,11 +177,13 @@ class Sentinel1Dataset(Dataset):
         img = np.nan_to_num(img, nan=np.median(img[~np.isnan(img)]))
         img = median_filter(img, size=3)
 
+        # normalize the image
         if self.normalization:
-            img = self.normalization(img)
+            img = self.normalize_percentile(img)
         
+        # convert image to tensor
         img_tensor = torch.from_numpy(img).float()
-        
+
         # apply data augmentation
         random.seed(96)
         torch.manual_seed(69)

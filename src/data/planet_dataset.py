@@ -18,7 +18,7 @@ class PlanetDataset(Dataset):
       Attributes:
             data_dir (str): Path to the directory with image and ground truth data.
             pad (bool): Whether to pad images to a fixed size.
-            normalization (callable, optional): Function for normalizing image data.
+            normalization (bool): Specifies if normalization should be applied to the images.
             transforms (callable, optional): Augmentation transforms to be applied to the images.
             is_fusion (bool): Whether the dataset is used for fusion with Sentinel-1 data.
             is_inference (bool): Whether the dataset is used for inference.
@@ -101,6 +101,16 @@ class PlanetDataset(Dataset):
             ndwi = (green - nir) / (green + nir + 1e-10)
 
             return torch.from_numpy(ndwi).unsqueeze(0)
+      
+      @staticmethod
+      def normalize_percentile(image, 
+                            lower_percentile=206.5,
+                            upper_percentile=3770.5):
+        """
+        Normalize iamge between the global 2nd and 98th percentiles.
+        These values were previously calculated from the training dataset.
+        """
+        return (image - lower_percentile) / (upper_percentile - lower_percentile)
 
       def __len__(self):
             return len(self.dataset)
@@ -149,8 +159,8 @@ class PlanetDataset(Dataset):
             img_tensor = torch.from_numpy(img).float()
 
             # apply normalization
-            if self.normalization is not None:
-                  img_tensor = self.normalization(img_tensor)
+            if self.normalization:
+                  img_tensor = self.normalize_percentile(img_tensor)
 
             # stack NDVI as an additional channel or use it as needed
             img_tensor = torch.cat((img_tensor, ndvi, savi, ndwi), dim=0)
