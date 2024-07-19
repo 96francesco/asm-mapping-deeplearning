@@ -2,18 +2,20 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 
-def plot_segmentation_outputs(predictions_file: str, output_name: str, is_optical=True,
-                               is_fusion=False, num_examples=3, original_dimensions=(375, 375),
-                               threshold=0.5):
+def plot_segmentation_outputs(predictions_file, output_name: str,
+                              mode: str, data_source: str,
+                              num_examples=3, original_shape=(375, 375),
+                              threshold=0.5):
     
-      predictions = torch.load(predictions_file)
-      original_height, original_width = original_dimensions
+      # predictions = torch.load(predictions_file)
+      predictions = predictions_file
+      original_height, original_width = original_shape
       
-      subplot_cols = 4 if is_fusion else 3
+      subplot_cols = 4 if mode == 'late_fusion' or mode == 'early_fusion' else 3
       fig, axs = plt.subplots(num_examples, subplot_cols, figsize=(20, 5 * num_examples))
       
       for i in range(min(num_examples, len(predictions))):
-            if is_fusion:
+            if mode == 'late_fusion' or mode == 'early_fusion':
                   planet_input, s1_input, outputs, targets = predictions[i]
                   
                   # process Planet input
@@ -35,8 +37,9 @@ def plot_segmentation_outputs(predictions_file: str, output_name: str, is_optica
             else:
                   inputs, outputs, targets = predictions[i]
                   
-                  if is_optical:
-                        input_img = inputs[0].cpu().numpy().transpose(1, 2, 0)
+                  if data_source == 'planet':
+                        input_img = inputs[0].cpu().numpy()
+                        input_img = np.transpose(input_img, (1, 2, 0))
                         input_img = input_img[:, :, [2, 1, 0]]  # convert BGR to RGB
                         
                         # crop to original size to remove padding
@@ -55,12 +58,10 @@ def plot_segmentation_outputs(predictions_file: str, output_name: str, is_optica
 
                         axs[i, 0].imshow(input_img, cmap='gray')
                         axs[i, 0].set_title("Input Image", fontsize=20)
-                        
                   
-            
             # process outputs and targets
             target_img = targets[0].cpu().numpy()
-            probs = torch.sigmoid(outputs[0].cpu()).detach().numpy()
+            probs = outputs[0].cpu().detach().numpy()
             output_img = (probs > threshold).squeeze().astype(np.uint8)
             
             # crop to original dimensions
