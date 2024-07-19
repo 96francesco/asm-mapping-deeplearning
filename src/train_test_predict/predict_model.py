@@ -14,8 +14,8 @@ from models.lit_model_standalone import LitModelStandalone
 from models.lit_model_lf import LitModelLateFusion
 from models.lit_model_ef import LitModelEarlyFusion
 
-from visualization.get_predictions import get_predictions
-from visualization.plot_example_segmentation import plot_segmentation_outputs
+from utils.visualization.get_probabilities import get_probabilities
+from utils.visualization.plot_example_segmentation import plot_segmentation_outputs
 
 
 # set seed for reproducibility
@@ -26,7 +26,7 @@ torch.cuda.empty_cache()
 gc.collect()
 
 # read config file
-with open('src/train_test_predict/test_config.json') as f:
+with open('src/train_test_predict/predict_config.json') as f:
     config = json.load(f)
 
 mode_dict = {
@@ -77,20 +77,18 @@ test_loader = DataLoader(testing_dataset,
                          batch_size=batch_size, 
                          shuffle=False,
                          num_workers=9)
+# get probabilites
+probs = get_probabilities(model, 
+                        test_loader, 
+                        mode=config["mode"],
+                        indices=config['indices'], 
+                        output_name=config["output_name"])
 
-indices = [18, 69, 200]
-filename = config['checkpoint_name']
-print(filename)
-get_predictions(model, 
-                test_loader, 
-                is_fusion=False,
-                indices=indices, 
-                output_name=f'{filename}')
-
-predictions_file = f'models/predictions/{filename}-{indices}.pth'
-plot_segmentation_outputs = plot_segmentation_outputs(predictions_file, 
-                                                      f'{filename}_{indices}',
-                                                      is_fusion=False,
-                                                      is_optical=True,
-                                                      threshold=0.4,
-                                                      original_dimensions=(375, 375))
+# plot examples
+plot_segmentation_outputs = plot_segmentation_outputs(probs, 
+                                                      mode=config["mode"],
+                                                      data_source=config["datasource"],
+                                                      threshold=config["threshold"],
+                                                      original_shape=config["original_shape"],
+                                                      output_name=config["output_name"])
+print("Predictions saved successfully!")
