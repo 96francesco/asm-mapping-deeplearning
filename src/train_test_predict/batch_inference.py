@@ -49,13 +49,15 @@ except ImportError as e:
 seed_everything(42, workers=True)
 
 # load trained model
-model = LitModelLateFusion(is_inference=True)
-model.load_state_dict(torch.load('models/fusion_full.pth'))
+model = LitModelLateFusion
+# model.load_state_dict(torch.load('models/fusion_full.pth'))
+model = model.load_from_checkpoint('models/checkpoints/fusion_pretrained_trial11-epoch=43-val_f1score=0.84.ckpt')
 model.eval()
+model.freeze()
 model.to('cuda' if torch.cuda.is_available() else 'cpu')
 
 # define AOI and convert to EE object
-aoi_path = "/mnt/guanabana/raid/home/pasan001/asm-mapping-deeplearning/data/study_area/north_kivu_wgs84.geojson"
+aoi_path = "/mnt/guanabana/raid/home/pasan001/asm-mapping-deeplearning/data/study_area/mwenga_wgs84.geojson"
 with open(aoi_path, 'r') as f:
     geojson_dict = json.load(f)
 ee_object = geemap.geojson_to_ee(geojson_dict)
@@ -172,10 +174,11 @@ for batch_start in range(0, len(tile_info_list), BATCH_SIZE):
 
             # make prediction
             with torch.no_grad():
-                output = model(planet_input.to(model.device), s1_input.to(model.device))
-            prediction = torch.sigmoid(output)
-            prediction_binary = (prediction > 0.3).float()
+                logits = model(planet_input.to(model.device), s1_input.to(model.device))
+            probs = torch.sigmoid(logits)
+            prediction_binary = (probs > 0.3).float()
             prediction_np = prediction_binary.cpu().numpy().squeeze()
+            probs_np = probs.cpu().numpy().squeeze()
 
             with rasterio.open(file_path) as src:
                 crs = src.crs
@@ -191,6 +194,7 @@ for batch_start in range(0, len(tile_info_list), BATCH_SIZE):
                             crs=crs,
                             transform=transform) as dst:
                 dst.write(prediction_np, 1)
+                dst.write(probs_np, 2)
             print(f'Saved prediction to {output_path}', flush=True)
 
             # delete local files and GEE assets
