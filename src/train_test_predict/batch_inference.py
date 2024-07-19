@@ -11,8 +11,6 @@ from torch.utils.data import DataLoader
 from pytorch_lightning import seed_everything
 
 from data.fusion_dataset import FusionDataset
-from data.planet_dataset_normalization import linear_norm_global_percentile as planet_norm
-from data.s1_dataset_normalization import linear_norm_global_percentile as s1_norm
 from models.lit_model_lf import LitModelLateFusion
 from utils.generate_grid import generate_grid
 from utils.export_tile import export_tile
@@ -142,23 +140,12 @@ for batch_start in range(0, len(tile_info_list), BATCH_SIZE):
         download_gee_asset(f'projects/asm-drc/assets/{nicfi_asset_id}', tile, nicfi_local_path)
         download_gee_asset(f'projects/asm-drc/assets/{s1_asset_id}', tile, s1_local_path)
 
-        # debug
-        # try:
-        #     with rasterio.open(nicfi_local_path) as ds:
-        #         print(f"{nicfi_local_path} is a valid file")
-        #     with rasterio.open(s1_local_path) as ds:
-        #         print(f"{s1_local_path} is a valid file")
-        # except rasterio.errors.RasterioIOError as e:
-        #     print(f"Skipping tile {i} due to invalid files: {e}", flush=True)
-        #     delete_local_files([nicfi_local_path, s1_local_path])
-        #     continue
-
         # read data with dataset class
         data_dir = '/mnt/guanabana/raid/home/pasan001/asm-mapping-deeplearning/data/inference_dataset/inference_gee'
         dataset = FusionDataset(
             root_dir=data_dir,
-            planet_normalization=planet_norm,
-            s1_normalization=s1_norm,
+            planet_normalization=True,
+            s1_normalization=True,
             is_inference=True,
         )
         dataloader = DataLoader(dataset, batch_size=1, shuffle=False)
