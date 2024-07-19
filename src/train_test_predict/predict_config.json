@@ -1,0 +1,12 @@
+{
+      "datasource": "planet",
+      "testing_dir": "/mnt/guanabana/raid/home/pasan001/asm-mapping-deeplearning/data/split_0/planet/testing_data",
+      "checkpoint": "models/checkpoints/planet_trial10_resnet34-epoch=98-val_f1score=0.79.ckpt",
+      "mode": "standalone",
+      "batch_size": 8,
+      "indices": [18, 69, 200],
+      "output_name": "planet_newpredictions",
+      "threshold": 0.4,
+      "original_shape": [375, 375]
+  }
+  
