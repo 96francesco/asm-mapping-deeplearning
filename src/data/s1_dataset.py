@@ -22,7 +22,7 @@ class Sentinel1Dataset(Dataset):
         data_dir (str): Path to the directory containing Sentinel-1 image and ground truth data.
         pad (bool): Indicates whether to pad images to a fixed size.
         normalization (bool): Specifies if normalization should be applied to the images.
-        transforms (callable, optional): Augmentation transforms to be applied to the images.
+        transforms (bool): Specifies if data augmentation should be applied to the images.
         is_fusion (bool): Specifies if the dataset is being used in fusion with Planet images,
                           enabling resampling to match Planet images' resolution.
         is_inference (bool): Specifies if the dataset is being used for inference.
@@ -32,8 +32,6 @@ class Sentinel1Dataset(Dataset):
         dataset (list of tuples): List where each tuple contains paths to an image and its corresponding ground truth.
 
     Methods:
-        vv_vh(img): Calculates the ratio (difference in DB scale) between the VV and VH bands 
-                    of a Sentinel-1 image.
         __len__(): Returns the number of image-ground truth pairs in the dataset.
         pad_to_target(img_tensor, target_height, target_width): Pads the image tensor to the specified dimensions.
         __getitem__(idx): Retrieves the image-ground truth pair at the specified index, applying any specified transformations
@@ -83,19 +81,6 @@ class Sentinel1Dataset(Dataset):
                 img_path = os.path.join(self.img_folder, img_name)
                 self.dataset.append(img_path)
     
-    @staticmethod
-    def vv_vh(img):
-        """
-        Calculates the ratio between the VV and VH bands of a Sentinel-1 image.
-        """
-        vv = img[0]
-        vh = img[1]
-        diff = vv - vh
-        
-        # convert to tensor and add channel dimension
-        diff = torch.from_numpy(diff).unsqueeze(0)
-        return diff
-
     @staticmethod
     def normalize_percentile(image, 
                             lower_percentile=-12.381244628070895,
