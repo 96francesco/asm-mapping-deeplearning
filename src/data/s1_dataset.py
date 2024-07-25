@@ -21,7 +21,7 @@ class Sentinel1Dataset(Dataset):
     Attributes:
         data_dir (str): Path to the directory containing Sentinel-1 image and ground truth data.
         pad (bool): Indicates whether to pad images to a fixed size.
-        normalization (bool): Specifies if normalization should be applied to the images.
+        normalization (callable): Calls image normalization function.
         transforms (bool): Specifies if data augmentation should be applied to the images.
         is_fusion (bool): Specifies if the dataset is being used in fusion with Planet images,
                           enabling resampling to match Planet images' resolution.
@@ -109,10 +109,6 @@ class Sentinel1Dataset(Dataset):
             # match Planet images dimensions
             target_height = 384
             target_width = 384
-        
-        if self.is_inference:
-            target_height = 1024 # inference is executed on larger tiles
-            target_width = 1024
 
         # calculate padding
         pad_height = target_height - height if height < target_height else 0
@@ -164,7 +160,8 @@ class Sentinel1Dataset(Dataset):
 
         # normalize the image
         if self.normalization:
-            img = self.normalize_percentile(img)
+            # img = self.normalize_percentile(img)
+            img = self.normalization(img)
         
         # convert image to tensor
         img_tensor = torch.from_numpy(img).float()
