@@ -21,6 +21,8 @@ from models.lit_model_standalone import LitModelStandalone
 from models.lit_model_lf import LitModelLateFusion
 from models.lit_model_ef import LitModelEarlyFusion
 
+from data.normalization import s1_norm, planet_norm
+
 # clear CUDA cache
 torch.cuda.empty_cache()
 gc.collect()
@@ -46,10 +48,15 @@ datasource_dict = {
 
 if datasource_dict[config["datasource"]] == PlanetDataset:
     dataset = PlanetDataset
+    normalization = planet_norm
 elif datasource_dict[config["datasource"]] == Sentinel1Dataset:
     dataset = Sentinel1Dataset
+    normalization = s1_norm
 elif datasource_dict[config["datasource"]] == FusionDataset:
     dataset = FusionDataset
+    planet_norm = planet_norm
+    s1_norm = s1_norm
+
 
 # create training dataset
 training_dir = config["training_dir"]
@@ -58,13 +65,13 @@ training_dir = config["training_dir"]
 if datasource_dict[config["datasource"]] == FusionDataset:
     print('Initializing fusion dataset')
     training_dataset = dataset(training_dir,
-                            planet_normalization=True,
-                            s1_normalization=True)
+                            planet_normalization=planet_norm,
+                            s1_normalization=s1_norm)
 else:
     print('Initializing standalone dataset')
     training_dataset = dataset(training_dir,
                             pad=True,
-                            normalization=True,
+                            normalization=normalization,
                             transforms=True
                             )
 
@@ -92,7 +99,7 @@ val_loader = DataLoader(val_set,
 
 # pre-trained checkpoints, for Late Fusion mode
 planet_checkpoint_path = 'models/checkpoints/planet_trial10_resnet34-epoch=98-val_f1score=0.79.ckpt'
-s1_checkpoint_path = 'models/checkpoints/s1_new_trial53-epoch=51-val_f1score=0.48.ckpt'
+s1_checkpoint_path = 'models/checkpoints/s1_trial51-epoch=99-val_f1score=0.67.ckpt'
 
 # define model
 if config["mode"] == "late_fusion":

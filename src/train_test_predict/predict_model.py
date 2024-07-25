@@ -17,6 +17,7 @@ from models.lit_model_ef import LitModelEarlyFusion
 from utils.visualization.get_probabilities import get_probabilities
 from utils.visualization.plot_example_segmentation import plot_segmentation_outputs
 
+from data.normalization import planet_norm, s1_norm
 
 # set seed for reproducibility
 seed_everything(42, workers=True)
@@ -43,22 +44,26 @@ datasource_dict = {
 
 if datasource_dict[config["datasource"]] == PlanetDataset:
     dataset = PlanetDataset
+    normalization = planet_norm
 elif datasource_dict[config["datasource"]] == Sentinel1Dataset:
     dataset = Sentinel1Dataset
+    normalization = s1_norm
 elif datasource_dict[config["datasource"]] == FusionDataset:
     dataset = FusionDataset
+    planet_normalization = planet_norm
+    s1_normalization = s1_norm
 
 # create testing dataset
 testing_dir = config["testing_dir"]
 
 if datasource_dict[config["datasource"]] == FusionDataset:
     testing_dataset = dataset(testing_dir,
-                            planet_normalization=True,
-                            s1_normalization=True)
+                            planet_normalization=planet_normalization,
+                            s1_normalization=s1_normalization)
 else:
     testing_dataset = dataset(testing_dir,
                             pad=True,
-                            normalization=True,
+                            normalization=normalization,
                             transforms=False)
 
 # load the checkpoint
